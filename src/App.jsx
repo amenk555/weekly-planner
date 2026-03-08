@@ -44,6 +44,7 @@ const LISTS = [
   { key: "Next 30 Days", label: "Next 30 Days", icon: "\u25C7" },
   { key: "Radar", label: "Radar", icon: "\u25C9" },
   { key: "Think", label: "Think", icon: "\u25B3" },
+  { key: "Other", label: "Other", icon: "\u25CB" },
 ];
 
 const genId = () => Math.random().toString(36).substr(2, 9);
@@ -347,13 +348,22 @@ export default function WeeklyPlanner() {
   const [runningLists, setRunningLists] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [collapsedDays, setCollapsedDays] = useState({});
+  // Default: collapse all days except today
+  const getDefaultCollapsed = () => {
+    const ti = new Date().getDay() - 1;
+    const tn = ti >= 0 && ti < 5 ? DAYS[ti] : (ti >= 5 || ti === -1 ? "Weekend" : null);
+    const c = {};
+    DAYS.forEach(d => { c[d] = d !== tn; });
+    return c;
+  };
+
+  const [collapsedDays, setCollapsedDays] = useState(getDefaultCollapsed);
   const [mobileView, setMobileView] = useState("week");
   const [showRollover, setShowRollover] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [quickNote, setQuickNote] = useState("");
-  const [allCollapsed, setAllCollapsed] = useState(false);
+  const [allCollapsed, setAllCollapsed] = useState(true);
   const saveTimeout = useRef(null);
   const noteTimeout = useRef(null);
   const isCurrentWeek = currentWeek === getWeekKey(new Date());
@@ -570,7 +580,11 @@ export default function WeeklyPlanner() {
         `}</style>
 
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 16px 0", position: "sticky", top: 0, zIndex: 100 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingBottom: 10, flexWrap: "wrap" }}>
+          {/* Hamburger pinned top-right */}
+          <div style={{ position: "absolute", top: 10, right: 16, zIndex: 101 }}>
+            <HamburgerMenu onExport={() => setShowExport(true)} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingBottom: 10, paddingRight: 44, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto" }}>
               <div style={{ display: "flex", flexShrink: 0 }}>
                 <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, -1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: "6px 0 0 6px", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u2039"}</button>
@@ -596,7 +610,6 @@ export default function WeeklyPlanner() {
                 {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
               <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Over {"\u2192"}</button>
-              <HamburgerMenu onExport={() => setShowExport(true)} />
             </div>
           </div>
           <div className="mobile-tabs" style={{ display: "none", borderTop: `1px solid ${C.border}` }}>
