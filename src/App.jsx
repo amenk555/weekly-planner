@@ -312,13 +312,21 @@ function QuickNoteModal({ note, onSave, onClose }) {
   const [text, setText] = useState(note);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 20, width: 400, maxWidth: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
+      <div onClick={e => e.stopPropagation()} className="quick-note-modal" style={{ background: C.surface, borderRadius: 14, padding: 20, width: 400, maxWidth: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
+        <style>{`
+          @media (min-width: 768px) { .quick-note-modal { width: 540px !important; } }
+          .quick-note-area::-webkit-scrollbar { width: 4px; }
+          .quick-note-area::-webkit-scrollbar-track { background: transparent; }
+          .quick-note-area::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
+          .quick-note-area::-webkit-scrollbar-thumb:hover { background: #B0B5C0; }
+          .quick-note-area { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
+        `}</style>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Quick Notes</span>
           <button onClick={onClose} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
         </div>
-        <textarea value={text} onChange={e => { setText(e.target.value); onSave(e.target.value); }} placeholder="Jot down anything..." rows={10}
-          style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px", fontFamily: font.body, fontSize: 16, color: C.text, resize: "vertical", outline: "none", background: C.surfaceAlt, boxSizing: "border-box", lineHeight: 1.6 }}
+        <textarea className="quick-note-area" value={text} onChange={e => { setText(e.target.value); onSave(e.target.value); }} placeholder="Jot down anything..." rows={14}
+          style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px", fontFamily: font.body, fontSize: 13, color: C.text, resize: "vertical", outline: "none", background: C.surfaceAlt, boxSizing: "border-box", lineHeight: 1.6, maxHeight: "60vh", overflowY: "auto" }}
           onFocus={e => e.target.style.borderColor = C.accent} onBlur={e => e.target.style.borderColor = C.border} />
         <div style={{ fontSize: 11, color: C.dim, marginTop: 6 }}>Syncs across all your devices</div>
       </div>
