@@ -35,23 +35,30 @@ const font = { heading: "'Syne', sans-serif", body: "'DM Sans', sans-serif" };
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Weekend"];
 const BLOCKS = [
-  { key: "Morning", label: "Morning", icon: "◐", color: C.amber, dim: C.amberDim },
-  { key: "Afternoon", label: "Afternoon", icon: "◑", color: C.accent, dim: C.accentDim },
-  { key: "Admin", label: "Admin", icon: "▤", color: C.slate, dim: C.slateDim },
+  { key: "Morning", label: "Morning", icon: "\u25D0", color: C.amber, dim: C.amberDim },
+  { key: "Afternoon", label: "Afternoon", icon: "\u25D1", color: C.accent, dim: C.accentDim },
+  { key: "Admin", label: "Admin", icon: "\u25A4", color: C.slate, dim: C.slateDim },
 ];
 const LISTS = [
-  { key: "This Week", label: "This Week", icon: "⚡" },
-  { key: "Next 30 Days", label: "Next 30 Days", icon: "◇" },
-  { key: "Radar", label: "Radar", icon: "◉" },
-  { key: "Think", label: "Think", icon: "△" },
+  { key: "This Week", label: "This Week", icon: "\u26A1" },
+  { key: "Next 30 Days", label: "Next 30 Days", icon: "\u25C7" },
+  { key: "Radar", label: "Radar", icon: "\u25C9" },
+  { key: "Think", label: "Think", icon: "\u25B3" },
 ];
 
 const genId = () => Math.random().toString(36).substr(2, 9);
 const getWeekKey = (date) => { const d = new Date(date); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1); return new Date(d.setDate(diff)).toISOString().split("T")[0]; };
-const getWeekLabel = (wk) => { const s = new Date(wk + "T00:00:00"), e = new Date(s); e.setDate(e.getDate() + 4); const f = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); return `${f(s)} – ${f(e)}, ${s.getFullYear()}`; };
+const getWeekLabel = (wk) => { const s = new Date(wk + "T00:00:00"), e = new Date(s); e.setDate(e.getDate() + 4); const f = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); return `${f(s)} \u2013 ${f(e)}, ${s.getFullYear()}`; };
 const getAdjacentWeek = (wk, off) => { const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7 * off); return getWeekKey(d); };
 const emptyWeek = () => { const days = {}; DAYS.forEach(d => { days[d] = {}; BLOCKS.forEach(b => { days[d][b.key] = []; }); }); return { priorities: "", days }; };
 const emptyLists = () => { const l = {}; LISTS.forEach(li => { l[li.key] = []; }); return l; };
+
+// Parse task text for bold (*) and bold+red (**) prefixes
+const parseTaskText = (text) => {
+  if (text.startsWith("**")) return { display: text.slice(2), bold: true, red: true };
+  if (text.startsWith("*")) return { display: text.slice(1), bold: true, red: false };
+  return { display: text, bold: false, red: false };
+};
 
 let dragPayload = null;
 
@@ -66,15 +73,29 @@ function DropZone({ onDrop, children, style }) {
   );
 }
 
-function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone }) {
+// Reorder drop target between tasks
+function ReorderDropZone({ onDrop, children }) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setOver(true); }}
+      onDragLeave={e => { e.stopPropagation(); setOver(false); }}
+      onDrop={e => { e.preventDefault(); e.stopPropagation(); setOver(false); if (dragPayload) { onDrop(dragPayload); dragPayload = null; } }}
+      style={{ borderTop: over ? `2px solid ${C.accent}` : "2px solid transparent", transition: "border-color 0.1s", minHeight: 2 }}
+    >{children}</div>
+  );
+}
+
+function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, index }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(task.text);
   const ref = useRef(null);
   useEffect(() => { if (editing && ref.current) ref.current.focus(); }, [editing]);
   const save = () => { if (text.trim()) onUpdate(task.id, text.trim()); else onDelete(task.id); setEditing(false); };
+  const parsed = parseTaskText(task.text);
   return (
     <div draggable={!editing}
-      onDragStart={e => { dragPayload = { task: { ...task }, type: dragType, zone: dragZone }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); e.currentTarget.style.opacity = "0.4"; }}
+      onDragStart={e => { dragPayload = { task: { ...task }, type: dragType, zone: dragZone, index }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); e.currentTarget.style.opacity = "0.4"; }}
       onDragEnd={e => { e.currentTarget.style.opacity = "1"; }}
       style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
       <button onClick={() => onToggle(task.id)} style={{ width: 16, height: 16, minWidth: 16, marginTop: 2, borderRadius: 4, padding: 0, border: task.done ? "none" : `1.5px solid ${C.dim}`, background: task.done ? C.accent : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -86,16 +107,21 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone }) {
           style={{ flex: 1, border: "none", borderBottom: `1px solid ${C.accent}`, outline: "none", fontSize: 16, fontFamily: font.body, background: "transparent", padding: "1px 0", color: C.text }} />
       ) : (
         <span onClick={() => { setEditing(true); setText(task.text); }}
-          style={{ flex: 1, fontSize: 13, fontFamily: font.body, cursor: "text", textDecoration: task.done ? "line-through" : "none", color: task.done ? C.dim : C.text, lineHeight: 1.45, wordBreak: "break-word" }}>{task.text}</span>
+          style={{
+            flex: 1, fontSize: 13, fontFamily: font.body, cursor: "text",
+            textDecoration: task.done ? "line-through" : "none",
+            color: task.done ? C.dim : parsed.red ? C.danger : C.text,
+            fontWeight: parsed.bold ? 700 : 400,
+            lineHeight: 1.45, wordBreak: "break-word",
+          }}>{parsed.display}</span>
       )}
       <button onClick={() => onDelete(task.id)}
         style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: "0 2px", lineHeight: 1, marginTop: 1, flexShrink: 0 }}
-        onMouseEnter={e => e.target.style.color = C.danger} onMouseLeave={e => e.target.style.color = C.dim}>×</button>
+        onMouseEnter={e => e.target.style.color = C.danger} onMouseLeave={e => e.target.style.color = C.dim}>{"\u00D7"}</button>
     </div>
   );
 }
 
-// Edit #2: AddTask now submits on blur (when you tap/click elsewhere)
 function AddTask({ onAdd, placeholder }) {
   const [text, setText] = useState("");
   const submit = () => { if (text.trim()) { onAdd(text.trim()); setText(""); } };
@@ -110,20 +136,67 @@ function AddTask({ onAdd, placeholder }) {
   );
 }
 
+// Hamburger menu
+function HamburgerMenu({ onExport }) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("touchstart", close);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); };
+  }, [open]);
+
+  return (
+    <div ref={menuRef} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(p => !p)} style={{
+        background: open ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${open ? "rgba(79,106,232,0.3)" : C.border}`,
+        color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, fontFamily: font.body, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
+          <rect y="0" width="16" height="2" rx="1" fill="currentColor"/>
+          <rect y="6" width="16" height="2" rx="1" fill="currentColor"/>
+          <rect y="12" width="16" height="2" rx="1" fill="currentColor"/>
+        </svg>
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", right: 0, background: C.surface,
+          borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.12)", border: `1px solid ${C.border}`,
+          minWidth: 180, zIndex: 200, overflow: "hidden",
+        }}>
+          <button onClick={() => { onExport(); setOpen(false); }} style={{
+            width: "100%", padding: "12px 16px", border: "none", background: "transparent",
+            textAlign: "left", cursor: "pointer", fontFamily: font.body, fontSize: 13, color: C.text,
+            display: "flex", alignItems: "center", gap: 10,
+          }}
+            onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          >
+            <span style={{ fontSize: 15 }}>{"\u2193"}</span> Export Planner
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RolloverModal({ items, onConfirm, onCancel }) {
   const [selected, setSelected] = useState(items.map(i => i.id));
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Over → Next Week</h3>
+        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Over {"\u2192"} Next Week</h3>
         <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Incomplete tasks will be added to next Monday's Morning block. Uncheck any you want to leave behind.</p>
         <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
-          {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks to roll over! 🎉</p>
+          {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks to roll over! {"\uD83C\uDF89"}</p>
           : items.map(item => (
             <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,106,232,0.2)" : "transparent"}`, marginBottom: 4 }}>
               <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
-              <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.day} · {item.block}</span></div>
+              <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.day} {"\u00B7"} {item.block}</span></div>
             </label>
           ))}
         </div>
@@ -178,7 +251,7 @@ function ExportModal({ currentWeek, lists, onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", background: "rgba(0,0,0,0.25)", padding: 16 }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, width: 440, maxWidth: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <h3 style={{ fontFamily: font.heading, fontSize: 18, margin: "0 0 16px", color: C.text }}>↓ Export Planner</h3>
+        <h3 style={{ fontFamily: font.heading, fontSize: 18, margin: "0 0 16px", color: C.text }}>{"\u2193"} Export Planner</h3>
         <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>{qBtn("This week", "this")}{qBtn("Last 4 weeks", "4w")}{qBtn("Last 3 months", "3m")}{qBtn("All time", "all")}</div>
         <div style={{ display: "flex", gap: 12, marginBottom: 14 }}>
           <div style={{ flex: 1 }}><label style={{ fontSize: 11, fontWeight: 600, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: 4 }}>Start</label><input type="date" value={startWeek} onChange={e => setStartWeek(getWeekKey(e.target.value))} style={inputStyle} /></div>
@@ -203,8 +276,8 @@ function QuickNoteModal({ note, onSave, onClose }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onClose}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 20, width: 400, maxWidth: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>✎ Quick Notes</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+          <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Quick Notes</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
         </div>
         <textarea value={text} onChange={e => { setText(e.target.value); onSave(e.target.value); }} placeholder="Jot down anything..." rows={10}
           style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px", fontFamily: font.body, fontSize: 16, color: C.text, resize: "vertical", outline: "none", background: C.surfaceAlt, boxSizing: "border-box", lineHeight: 1.6 }}
@@ -215,12 +288,10 @@ function QuickNoteModal({ note, onSave, onClose }) {
   );
 }
 
-// Edit #3: Swipe hook for mobile tab switching
 function useSwipe(onSwipeLeft, onSwipeRight) {
   const touchStart = useRef(null);
   const touchEnd = useRef(null);
   const minSwipe = 50;
-
   const onTouchStart = (e) => { touchEnd.current = null; touchStart.current = e.targetTouches[0].clientX; };
   const onTouchMove = (e) => { touchEnd.current = e.targetTouches[0].clientX; };
   const onTouchEnd = () => {
@@ -228,10 +299,8 @@ function useSwipe(onSwipeLeft, onSwipeRight) {
     const dist = touchStart.current - touchEnd.current;
     if (dist > minSwipe) onSwipeLeft();
     if (dist < -minSwipe) onSwipeRight();
-    touchStart.current = null;
-    touchEnd.current = null;
+    touchStart.current = null; touchEnd.current = null;
   };
-
   return { onTouchStart, onTouchMove, onTouchEnd };
 }
 
@@ -252,10 +321,9 @@ export default function WeeklyPlanner() {
   const noteTimeout = useRef(null);
   const isCurrentWeek = currentWeek === getWeekKey(new Date());
 
-  // Edit #3: swipe between Week and Lists on mobile
   const swipeHandlers = useSwipe(
-    () => setMobileView("lists"),  // swipe left → show lists
-    () => setMobileView("week")    // swipe right → show week
+    () => setMobileView("lists"),
+    () => setMobileView("week")
   );
 
   useEffect(() => {
@@ -308,34 +376,92 @@ export default function WeeklyPlanner() {
   const editTask = (day, block, id, text) => { updateWeek(w => { const t = w.days[day][block].find(x => x.id === id); if (t) t.text = text; return w; }); };
   const deleteTask = (day, block, id) => { updateWeek(w => { w.days[day][block] = w.days[day][block].filter(x => x.id !== id); return w; }); };
 
+  // Reorder within same block
+  const reorderTask = (day, block, taskId, toIndex) => {
+    updateWeek(w => {
+      const arr = w.days[day][block];
+      const fromIndex = arr.findIndex(t => t.id === taskId);
+      if (fromIndex === -1) return w;
+      const [item] = arr.splice(fromIndex, 1);
+      const adjustedIndex = toIndex > fromIndex ? toIndex - 1 : toIndex;
+      arr.splice(adjustedIndex, 0, item);
+      return w;
+    });
+  };
+
   const addListItem = (ln, text) => { updateLists(l => { if (!l[ln]) l[ln] = []; l[ln].push({ id: genId(), text, done: false }); return l; }); };
   const toggleListItem = (ln, id) => { updateLists(l => { const t = l[ln]?.find(x => x.id === id); if (t) t.done = !t.done; return l; }); };
   const editListItem = (ln, id, text) => { updateLists(l => { const t = l[ln]?.find(x => x.id === id); if (t) t.text = text; return l; }); };
   const deleteListItem = (ln, id) => { updateLists(l => { l[ln] = l[ln].filter(x => x.id !== id); return l; }); };
 
-  const handleDropOnBlock = (day, block) => (payload) => {
-    const { task, type, zone } = payload;
+  const reorderListItem = (listKey, taskId, toIndex) => {
+    updateLists(l => {
+      const arr = l[listKey];
+      if (!arr) return l;
+      const fromIndex = arr.findIndex(t => t.id === taskId);
+      if (fromIndex === -1) return l;
+      const [item] = arr.splice(fromIndex, 1);
+      const adjustedIndex = toIndex > fromIndex ? toIndex - 1 : toIndex;
+      arr.splice(adjustedIndex, 0, item);
+      return l;
+    });
+  };
+
+  const handleDropOnBlock = (day, block, atIndex) => (payload) => {
+    const { task, type, zone, index: srcIndex } = payload;
+    // Same block reorder
+    if (type === "week" && zone === `${day}|${block}` && atIndex !== undefined) {
+      reorderTask(day, block, task.id, atIndex);
+      return;
+    }
     if (type === "week") {
       const [srcDay, srcBlock] = zone.split("|");
-      updateWeek(w => { w.days[srcDay][srcBlock] = w.days[srcDay][srcBlock].filter(t => t.id !== task.id); w.days[day][block].push({ id: genId(), text: task.text, done: task.done }); return w; });
+      updateWeek(w => {
+        w.days[srcDay][srcBlock] = w.days[srcDay][srcBlock].filter(t => t.id !== task.id);
+        const newTask = { id: genId(), text: task.text, done: task.done };
+        if (atIndex !== undefined) w.days[day][block].splice(atIndex, 0, newTask);
+        else w.days[day][block].push(newTask);
+        return w;
+      });
     } else if (type === "list") {
       updateLists(l => { l[zone] = l[zone].filter(t => t.id !== task.id); return l; });
-      updateWeek(w => { w.days[day][block].push({ id: genId(), text: task.text, done: false }); return w; });
-    }
-  };
-  const handleDropOnList = (listName) => (payload) => {
-    const { task, type, zone } = payload;
-    if (type === "list") {
-      if (zone === listName) return;
-      updateLists(l => { l[zone] = l[zone].filter(t => t.id !== task.id); l[listName].push({ id: genId(), text: task.text, done: task.done }); return l; });
-    } else if (type === "week") {
-      const [srcDay, srcBlock] = zone.split("|");
-      updateWeek(w => { w.days[srcDay][srcBlock] = w.days[srcDay][srcBlock].filter(t => t.id !== task.id); return w; });
-      updateLists(l => { if (!l[listName]) l[listName] = []; l[listName].push({ id: genId(), text: task.text, done: false }); return l; });
+      updateWeek(w => {
+        const newTask = { id: genId(), text: task.text, done: false };
+        if (atIndex !== undefined) w.days[day][block].splice(atIndex, 0, newTask);
+        else w.days[day][block].push(newTask);
+        return w;
+      });
     }
   };
 
-  // Edit #1: Expand/Collapse All
+  const handleDropOnList = (listName, atIndex) => (payload) => {
+    const { task, type, zone } = payload;
+    if (type === "list") {
+      if (zone === listName && atIndex !== undefined) {
+        reorderListItem(listName, task.id, atIndex);
+        return;
+      }
+      if (zone === listName) return;
+      updateLists(l => {
+        l[zone] = l[zone].filter(t => t.id !== task.id);
+        const newTask = { id: genId(), text: task.text, done: task.done };
+        if (atIndex !== undefined) l[listName].splice(atIndex, 0, newTask);
+        else l[listName].push(newTask);
+        return l;
+      });
+    } else if (type === "week") {
+      const [srcDay, srcBlock] = zone.split("|");
+      updateWeek(w => { w.days[srcDay][srcBlock] = w.days[srcDay][srcBlock].filter(t => t.id !== task.id); return w; });
+      updateLists(l => {
+        if (!l[listName]) l[listName] = [];
+        const newTask = { id: genId(), text: task.text, done: false };
+        if (atIndex !== undefined) l[listName].splice(atIndex, 0, newTask);
+        else l[listName].push(newTask);
+        return l;
+      });
+    }
+  };
+
   const toggleAllDays = () => {
     const next = !allCollapsed;
     setAllCollapsed(next);
@@ -370,6 +496,27 @@ export default function WeeklyPlanner() {
     </div>
   );
 
+  // Render a task list with reorder drop zones between items
+  const renderTaskList = (tasks, opts) => {
+    const { dragType, dragZone, onToggle, onUpdate, onDelete, onDropAt } = opts;
+    const items = [];
+    tasks.forEach((task, i) => {
+      items.push(
+        <ReorderDropZone key={`drop-${i}`} onDrop={(payload) => onDropAt(payload, i)}>
+          <TaskItem task={task} dragType={dragType} dragZone={dragZone} index={i}
+            onToggle={onToggle} onUpdate={onUpdate} onDelete={onDelete} />
+        </ReorderDropZone>
+      );
+    });
+    // Final drop zone at end
+    items.push(
+      <ReorderDropZone key="drop-end" onDrop={(payload) => onDropAt(payload, tasks.length)}>
+        <div />
+      </ReorderDropZone>
+    );
+    return items;
+  };
+
   return (
     <>
       <link href={FONTS_URL} rel="stylesheet" />
@@ -389,8 +536,8 @@ export default function WeeklyPlanner() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingBottom: 10, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto" }}>
               <div style={{ display: "flex", flexShrink: 0 }}>
-                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, -1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: "6px 0 0 6px", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>‹</button>
-                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, 1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, borderLeft: "none", color: C.muted, borderRadius: "0 6px 6px 0", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>›</button>
+                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, -1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: "6px 0 0 6px", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u2039"}</button>
+                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, 1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, borderLeft: "none", color: C.muted, borderRadius: "0 6px 6px 0", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u203A"}</button>
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{getWeekLabel(currentWeek)}</div>
@@ -407,17 +554,16 @@ export default function WeeklyPlanner() {
             <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
               {saving && <span style={{ fontSize: 11, color: C.dim, display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, animation: "pulse 1s infinite" }} /> syncing</span>}
               {!isCurrentWeek && <button onClick={() => setCurrentWeek(getWeekKey(new Date()))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Today</button>}
-              <button onClick={() => setShowExport(true)} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>↓ Export</button>
-              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${showQuickNote ? "rgba(79,106,232,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>✎ Notes</button>
-              {/* Edit #1: Expand/Collapse All button */}
+              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${showQuickNote ? "rgba(79,106,232,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
               <button onClick={toggleAllDays} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
-                {allCollapsed ? "▸ Expand" : "▾ Collapse"}
+                {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
-              <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Over →</button>
+              <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Over {"\u2192"}</button>
+              <HamburgerMenu onExport={() => setShowExport(true)} />
             </div>
           </div>
           <div className="mobile-tabs" style={{ display: "none", borderTop: `1px solid ${C.border}` }}>
-            {[{ key: "week", label: "📅 Week" }, { key: "lists", label: "📋 Lists" }].map(tab => (
+            {[{ key: "week", label: "\uD83D\uDCC5 Week" }, { key: "lists", label: "\uD83D\uDCCB Lists" }].map(tab => (
               <button key={tab.key} onClick={() => setMobileView(tab.key)}
                 style={{ flex: 1, padding: "10px 0", border: "none", background: "transparent", color: mobileView === tab.key ? C.accent : C.dim, fontSize: 13, cursor: "pointer", fontFamily: font.body, fontWeight: 600, borderBottom: mobileView === tab.key ? `2.5px solid ${C.accent}` : "2.5px solid transparent" }}>{tab.label}</button>
             ))}
@@ -433,10 +579,13 @@ export default function WeeklyPlanner() {
                   <span style={{ fontFamily: font.heading, fontSize: 12, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{li.label}</span>
                   <span style={{ fontSize: 10, marginLeft: "auto", background: C.accentDim, color: C.accent, padding: "1px 7px", borderRadius: 99, fontWeight: 600 }}>{(runningLists?.[li.key] || []).filter(i => !i.done).length}</span>
                 </div>
-                {(runningLists?.[li.key] || []).map(item => (
-                  <TaskItem key={item.id} task={item} dragType="list" dragZone={li.key}
-                    onToggle={id => toggleListItem(li.key, id)} onUpdate={(id, text) => editListItem(li.key, id, text)} onDelete={id => deleteListItem(li.key, id)} />
-                ))}
+                {renderTaskList(runningLists?.[li.key] || [], {
+                  dragType: "list", dragZone: li.key,
+                  onToggle: id => toggleListItem(li.key, id),
+                  onUpdate: (id, text) => editListItem(li.key, id, text),
+                  onDelete: id => deleteListItem(li.key, id),
+                  onDropAt: (payload, idx) => handleDropOnList(li.key, idx)(payload),
+                })}
                 <AddTask onAdd={text => addListItem(li.key, text)} placeholder={`Add to ${li.label.toLowerCase()}...`} />
               </DropZone>
             ))}
@@ -457,7 +606,7 @@ export default function WeeklyPlanner() {
                 const dayTasks = BLOCKS.reduce((s, b) => s + (weekData?.days[day]?.[b.key]?.length || 0), 0);
                 const dayDone = BLOCKS.reduce((s, b) => s + (weekData?.days[day]?.[b.key]?.filter(t => t.done).length || 0), 0);
                 const dayDateStr = isWeekend
-                  ? (() => { const sat = new Date(currentWeek + "T00:00:00"); sat.setDate(sat.getDate() + 5); const sun = new Date(sat); sun.setDate(sun.getDate() + 1); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} – ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
+                  ? (() => { const sat = new Date(currentWeek + "T00:00:00"); sat.setDate(sat.getDate() + 5); const sun = new Date(sat); sun.setDate(sun.getDate() + 1); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} \u2013 ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
                   : getDayDate(day).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
                 const bgColor = isToday ? "rgba(79,106,232,0.03)" : isWeekend ? "#F0F1F3" : C.surfaceAlt;
                 const borderColor = isToday ? "1px solid rgba(79,106,232,0.3)" : `1px solid ${C.border}`;
@@ -472,7 +621,7 @@ export default function WeeklyPlanner() {
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         {dayTasks > 0 && <span style={{ fontSize: 11, color: C.dim }}>{dayDone}/{dayTasks}</span>}
-                        <span style={{ color: C.dim, fontSize: 12, transition: "transform 0.2s", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", display: "inline-block" }}>▾</span>
+                        <span style={{ color: C.dim, fontSize: 12, transition: "transform 0.2s", transform: isExpanded ? "rotate(0deg)" : "rotate(-90deg)", display: "inline-block" }}>{"\u25BE"}</span>
                       </div>
                     </button>
                     {isExpanded && (
@@ -482,10 +631,13 @@ export default function WeeklyPlanner() {
                             <div style={{ fontSize: 10, fontWeight: 600, color: block.color, marginBottom: 5, display: "flex", alignItems: "center", gap: 5, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               <span style={{ fontSize: 12 }}>{block.icon}</span> {block.label}
                             </div>
-                            {(weekData?.days[day]?.[block.key] || []).map(task => (
-                              <TaskItem key={task.id} task={task} dragType="week" dragZone={`${day}|${block.key}`}
-                                onToggle={id => toggleTask(day, block.key, id)} onUpdate={(id, text) => editTask(day, block.key, id, text)} onDelete={id => deleteTask(day, block.key, id)} />
-                            ))}
+                            {renderTaskList(weekData?.days[day]?.[block.key] || [], {
+                              dragType: "week", dragZone: `${day}|${block.key}`,
+                              onToggle: id => toggleTask(day, block.key, id),
+                              onUpdate: (id, text) => editTask(day, block.key, id, text),
+                              onDelete: id => deleteTask(day, block.key, id),
+                              onDropAt: (payload, idx) => handleDropOnBlock(day, block.key, idx)(payload),
+                            })}
                             <AddTask onAdd={text => addTask(day, block.key, text)} placeholder={block.label} />
                           </DropZone>
                         ))}
