@@ -139,6 +139,7 @@ function AddTask({ onAdd, placeholder }) {
 // Hamburger menu
 function HamburgerMenu({ onExport }) {
   const [open, setOpen] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -148,6 +149,12 @@ function HamburgerMenu({ onExport }) {
     document.addEventListener("touchstart", close);
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("touchstart", close); };
   }, [open]);
+
+  const menuBtnStyle = {
+    width: "100%", padding: "12px 16px", border: "none", background: "transparent",
+    textAlign: "left", cursor: "pointer", fontFamily: font.body, fontSize: 13, color: C.text,
+    display: "flex", alignItems: "center", gap: 10,
+  };
 
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
@@ -165,18 +172,48 @@ function HamburgerMenu({ onExport }) {
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", right: 0, background: C.surface,
           borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.12)", border: `1px solid ${C.border}`,
-          minWidth: 180, zIndex: 200, overflow: "hidden",
+          minWidth: 200, zIndex: 200, overflow: "hidden",
         }}>
-          <button onClick={() => { onExport(); setOpen(false); }} style={{
-            width: "100%", padding: "12px 16px", border: "none", background: "transparent",
-            textAlign: "left", cursor: "pointer", fontFamily: font.body, fontSize: 13, color: C.text,
-            display: "flex", alignItems: "center", gap: 10,
-          }}
+          <button onClick={() => { onExport(); setOpen(false); }} style={menuBtnStyle}
             onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
-            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
-          >
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
             <span style={{ fontSize: 15 }}>{"\u2193"}</span> Export Planner
           </button>
+          <div style={{ height: 1, background: C.border }} />
+          <button onClick={() => { setShowHelp(true); setOpen(false); }} style={menuBtnStyle}
+            onMouseEnter={e => e.currentTarget.style.background = C.surfaceAlt}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+            <span style={{ fontSize: 15 }}>?</span> How to Use
+          </button>
+        </div>
+      )}
+      {showHelp && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={() => setShowHelp(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, width: 480, maxWidth: "100%", maxHeight: "80vh", overflowY: "auto", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontFamily: font.heading, fontSize: 18, color: C.text }}>How to Use This Planner</h3>
+              <button onClick={() => setShowHelp(false)} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
+            </div>
+            <div style={{ fontFamily: font.body, fontSize: 13, color: C.text, lineHeight: 1.7 }}>
+              {[
+                ["Add a task", "Tap the + field in any block and hit Enter, or just tap elsewhere and it saves automatically"],
+                ["Check off a task", "Tap the checkbox to mark it done (it'll dim and strikethrough)"],
+                ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
+                ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
+                ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
+                ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, and Think"],
+                ["Roll Over", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
+                ["Quick Notes", "Tap \u270E Notes for a scratchpad that syncs across devices"],
+                ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
+                ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
+              ].map(([title, desc], i) => (
+                <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <span style={{ color: C.accent, flexShrink: 0, marginTop: 1 }}>{"\u2022"}</span>
+                  <div><span style={{ fontWeight: 600 }}>{title}</span> {"\u2014"} {desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>
