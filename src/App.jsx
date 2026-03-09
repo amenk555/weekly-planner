@@ -388,6 +388,7 @@ export default function WeeklyPlanner() {
   const [showExport, setShowExport] = useState(false);
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [quickNote, setQuickNote] = useState("");
+  const [collapsedLists, setCollapsedLists] = useState({});
   const [allCollapsed, setAllCollapsed] = useState(true);
   const saveTimeout = useRef(null);
   const noteTimeout = useRef(null);
@@ -601,7 +602,7 @@ export default function WeeklyPlanner() {
           textarea::placeholder, input::placeholder { color: ${C.dim}; }
           @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
           @media (min-width: 768px) { .mobile-tabs { display: none !important; } .lists-panel { display: block !important; } .week-panel { display: block !important; } }
-          @media (max-width: 767px) { .mobile-tabs { display: flex !important; } .lists-panel { width: 100% !important; min-width: 100% !important; border-right: none !important; } .week-panel { width: 100% !important; } .header-actions { gap: 6px !important; } .header-actions button { padding: 6px 10px !important; font-size: 11px !important; } }
+          @media (max-width: 767px) { .mobile-tabs { display: flex !important; } .lists-panel { width: 100% !important; min-width: 100% !important; border-right: none !important; position: static !important; height: auto !important; } .week-panel { width: 100% !important; } .header-actions { gap: 6px !important; } .header-actions button { padding: 6px 10px !important; font-size: 11px !important; } }
         `}</style>
 
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 16px 0", position: "sticky", top: 0, zIndex: 100 }}>
@@ -646,24 +647,33 @@ export default function WeeklyPlanner() {
         </div>
 
         <div style={{ display: "flex", maxWidth: 1200, margin: "0 auto", minHeight: "calc(100vh - 110px)" }}>
-          <div className="lists-panel" style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", display: mobileView === "lists" ? "block" : "none" }}>
-            {LISTS.map(li => (
+          <div className="lists-panel" style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", position: "sticky", top: 56, height: "calc(100vh - 56px)", display: mobileView === "lists" ? "block" : "none" }}>
+            {LISTS.map(li => {
+              const isListExpanded = !collapsedLists[li.key];
+              return (
               <DropZone key={li.key} onDrop={handleDropOnList(li.key)} style={{ marginBottom: 16, padding: 10, border: `1px solid ${C.border}`, borderRadius: 10, background: C.surfaceAlt }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 8, padding: "4px 0" }}>
+                <button onClick={() => setCollapsedLists(prev => ({ ...prev, [li.key]: !prev[li.key] }))}
+                  style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: isListExpanded ? 8 : 0, padding: "4px 0", width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
                   <span style={{ fontSize: 14, opacity: 0.55 }}>{li.icon}</span>
                   <span style={{ fontFamily: font.heading, fontSize: 12, fontWeight: 700, color: C.muted, letterSpacing: "0.06em", textTransform: "uppercase" }}>{li.label}</span>
                   <span style={{ fontSize: 10, marginLeft: "auto", background: C.accentDim, color: C.accent, padding: "1px 7px", borderRadius: 99, fontWeight: 600 }}>{(runningLists?.[li.key] || []).filter(i => !i.done).length}</span>
-                </div>
-                {renderTaskList(runningLists?.[li.key] || [], {
-                  dragType: "list", dragZone: li.key,
-                  onToggle: id => toggleListItem(li.key, id),
-                  onUpdate: (id, text) => editListItem(li.key, id, text),
-                  onDelete: id => deleteListItem(li.key, id),
-                  onDropAt: (payload, idx) => handleDropOnList(li.key, idx)(payload),
-                })}
-                <AddTask onAdd={text => addListItem(li.key, text)} placeholder={`Add to ${li.label.toLowerCase()}...`} />
+                  <span style={{ color: C.dim, fontSize: 11, transition: "transform 0.2s", transform: isListExpanded ? "rotate(0deg)" : "rotate(-90deg)", display: "inline-block", marginLeft: 4 }}>{"\u25BE"}</span>
+                </button>
+                {isListExpanded && (
+                  <>
+                    {renderTaskList(runningLists?.[li.key] || [], {
+                      dragType: "list", dragZone: li.key,
+                      onToggle: id => toggleListItem(li.key, id),
+                      onUpdate: (id, text) => editListItem(li.key, id, text),
+                      onDelete: id => deleteListItem(li.key, id),
+                      onDropAt: (payload, idx) => handleDropOnList(li.key, idx)(payload),
+                    })}
+                    <AddTask onAdd={text => addListItem(li.key, text)} placeholder={`Add to ${li.label.toLowerCase()}...`} />
+                  </>
+                )}
               </DropZone>
-            ))}
+              );
+            })}
           </div>
 
           <div className="week-panel" style={{ flex: 1, overflowY: "auto", padding: 16, display: mobileView === "week" ? "block" : "none" }}>
