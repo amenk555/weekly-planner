@@ -48,9 +48,26 @@ const LISTS = [
 ];
 
 const genId = () => Math.random().toString(36).substr(2, 9);
-const getWeekKey = (date) => { const d = new Date(date); const day = d.getDay(); const diff = d.getDate() - day + (day === 0 ? -6 : 1); return new Date(d.setDate(diff)).toISOString().split("T")[0]; };
-const getWeekLabel = (wk) => { const s = new Date(wk + "T00:00:00"), e = new Date(s); e.setDate(e.getDate() + 4); const f = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); return `${f(s)} \u2013 ${f(e)}, ${s.getFullYear()}`; };
-const getAdjacentWeek = (wk, off) => { const d = new Date(wk + "T00:00:00"); d.setDate(d.getDate() + 7 * off); return getWeekKey(d); };
+const getWeekKey = (date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Sunday goes back 6, otherwise back to Monday
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() + diff);
+  return monday.toISOString().split("T")[0];
+};
+const getWeekLabel = (wk) => {
+  const mon = new Date(wk + "T00:00:00");
+  const sun = new Date(mon);
+  sun.setDate(sun.getDate() + 6);
+  const f = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${f(mon)} \u2013 ${f(sun)}, ${mon.getFullYear()}`;
+};
+const getAdjacentWeek = (wk, off) => {
+  const d = new Date(wk + "T00:00:00");
+  d.setDate(d.getDate() + 7 * off);
+  return getWeekKey(d);
+};
 const emptyWeek = () => { const days = {}; DAYS.forEach(d => { days[d] = {}; BLOCKS.forEach(b => { days[d][b.key] = []; }); }); return { priorities: "", days }; };
 const emptyLists = () => { const l = {}; LISTS.forEach(li => { l[li.key] = []; }); return l; };
 
@@ -414,9 +431,9 @@ export default function WeeklyPlanner() {
   };
 
   const getDayDate = (dayName) => {
-    const d = new Date(currentWeek + "T00:00:00");
-    d.setDate(d.getDate() + DAYS.indexOf(dayName));
-    return d;
+    const mon = new Date(currentWeek + "T00:00:00");
+    const offset = DAYS.indexOf(dayName);
+    return new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + offset);
   };
 
   const updateWeek = (updater) => {
@@ -664,7 +681,7 @@ export default function WeeklyPlanner() {
                 const dayTasks = BLOCKS.reduce((s, b) => s + (weekData?.days[day]?.[b.key]?.length || 0), 0);
                 const dayDone = BLOCKS.reduce((s, b) => s + (weekData?.days[day]?.[b.key]?.filter(t => t.done).length || 0), 0);
                 const dayDateStr = isWeekend
-                  ? (() => { const sat = new Date(currentWeek + "T00:00:00"); sat.setDate(sat.getDate() + 5); const sun = new Date(sat); sun.setDate(sun.getDate() + 1); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} \u2013 ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
+                  ? (() => { const mon = new Date(currentWeek + "T00:00:00"); const sat = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 5); const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} \u2013 ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
                   : getDayDate(day).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
                 const bgColor = isToday ? "rgba(79,106,232,0.03)" : isWeekend ? "#F0F1F3" : C.surfaceAlt;
                 const borderColor = isToday ? "1px solid rgba(79,106,232,0.3)" : `1px solid ${C.border}`;
