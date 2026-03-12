@@ -610,6 +610,9 @@ export default function WeeklyPlanner() {
     const todayItems = getTodayIncompleteItems().filter(i => selectedIds.includes(i.id));
     updateWeek(w => {
       todayItems.forEach(item => {
+        // Remove from today
+        w.days[todayName][item.blockKey] = w.days[todayName][item.blockKey].filter(t => t.id !== item.id);
+        // Add to tomorrow
         w.days[tomorrow][item.blockKey].push({ id: genId(), text: item.text, done: false });
       });
       return w;
