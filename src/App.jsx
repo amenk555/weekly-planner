@@ -220,7 +220,7 @@ function HamburgerMenu({ onExport }) {
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
                 ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
-                ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow\u2019s Morning block (Mon\u2013Thu only)"],
+                ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
                 ["Quick Notes", "Tap \u270E Notes for a scratchpad that syncs across devices"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
@@ -281,7 +281,7 @@ function RollDayModal({ items, todayName, tomorrowName, onConfirm, onCancel }) {
           </div>
         ) : (
           <>
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move today's incomplete tasks to {tomorrowName}'s Morning block. Uncheck any you want to leave behind.</p>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move today's incomplete tasks to {tomorrowName}, keeping them in their same blocks. Uncheck any you want to leave behind.</p>
             <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
               {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks today! {"\uD83C\uDF89"}</p>
               : items.map(item => (
@@ -610,7 +610,7 @@ export default function WeeklyPlanner() {
     const todayItems = getTodayIncompleteItems().filter(i => selectedIds.includes(i.id));
     updateWeek(w => {
       todayItems.forEach(item => {
-        w.days[tomorrow]["Morning"].push({ id: genId(), text: item.text, done: false });
+        w.days[tomorrow][item.blockKey].push({ id: genId(), text: item.text, done: false });
       });
       return w;
     });
