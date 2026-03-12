@@ -219,8 +219,9 @@ function HamburgerMenu({ onExport }) {
                 ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
                 ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
-                ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, and Think"],
-                ["Roll Over", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
+                ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
+                ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow\u2019s Morning block (Mon\u2013Thu only)"],
+                ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
                 ["Quick Notes", "Tap \u270E Notes for a scratchpad that syncs across devices"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
@@ -244,7 +245,7 @@ function RolloverModal({ items, onConfirm, onCancel }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Over {"\u2192"} Next Week</h3>
+        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Week {"\u2192"} Next Week</h3>
         <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Incomplete tasks will be added to next Monday's Morning block. Uncheck any you want to leave behind.</p>
         <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
           {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks to roll over! {"\uD83C\uDF89"}</p>
@@ -258,8 +259,47 @@ function RolloverModal({ items, onConfirm, onCancel }) {
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontFamily: font.body, fontSize: 13, cursor: "pointer", color: C.muted }}>Cancel</button>
           <button onClick={() => onConfirm(selected)} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: `0 0 16px ${C.accentGlow}` }}>
-            {items.length === 0 ? "Start New Week" : `Roll Over (${selected.length})`}
+            {items.length === 0 ? "Start New Week" : `Roll Week (${selected.length})`}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RollDayModal({ items, todayName, tomorrowName, onConfirm, onCancel }) {
+  const [selected, setSelected] = useState(items.map(i => i.id));
+  const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const isWeekend = todayName === "Weekend" || todayName === "Friday";
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
+      <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
+        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Day {"\u2192"} {tomorrowName || "Tomorrow"}</h3>
+        {isWeekend ? (
+          <div style={{ padding: 20, textAlign: "center" }}>
+            <p style={{ fontSize: 13, color: C.muted, fontFamily: font.body }}>Roll Day doesn't apply on {todayName === "Friday" ? "Friday" : "weekends"}. Use <strong>Roll Week</strong> to carry tasks to next Monday.</p>
+          </div>
+        ) : (
+          <>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move today's incomplete tasks to {tomorrowName}'s Morning block. Uncheck any you want to leave behind.</p>
+            <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+              {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks today! {"\uD83C\uDF89"}</p>
+              : items.map(item => (
+                <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,106,232,0.2)" : "transparent"}`, marginBottom: 4 }}>
+                  <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
+                  <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.block}</span></div>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontFamily: font.body, fontSize: 13, cursor: "pointer", color: C.muted }}>Cancel</button>
+          {!isWeekend && items.length > 0 && (
+            <button onClick={() => onConfirm(selected)} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: `0 0 16px ${C.accentGlow}` }}>
+              Roll Day ({selected.length})
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -385,6 +425,7 @@ export default function WeeklyPlanner() {
   const [collapsedDays, setCollapsedDays] = useState(getDefaultCollapsed);
   const [mobileView, setMobileView] = useState("week");
   const [showRollover, setShowRollover] = useState(false);
+  const [showRollDay, setShowRollDay] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showQuickNote, setShowQuickNote] = useState(false);
   const [quickNote, setQuickNote] = useState("");
@@ -549,6 +590,32 @@ export default function WeeklyPlanner() {
     DAYS.forEach(day => BLOCKS.forEach(b => { (weekData.days[day]?.[b.key] || []).filter(t => !t.done).forEach(t => items.push({ ...t, day, block: b.label })); }));
     return items;
   };
+
+  const getTodayIncompleteItems = () => {
+    if (!weekData || !todayName) return [];
+    const items = [];
+    BLOCKS.forEach(b => { (weekData.days[todayName]?.[b.key] || []).filter(t => !t.done).forEach(t => items.push({ ...t, block: b.label, blockKey: b.key })); });
+    return items;
+  };
+
+  const getTomorrowName = () => {
+    const idx = DAYS.indexOf(todayName);
+    if (idx === -1 || idx >= 4) return null; // Friday or Weekend — no tomorrow within weekdays
+    return DAYS[idx + 1];
+  };
+
+  const handleRollDay = (selectedIds) => {
+    const tomorrow = getTomorrowName();
+    if (!tomorrow || !weekData) return;
+    const todayItems = getTodayIncompleteItems().filter(i => selectedIds.includes(i.id));
+    updateWeek(w => {
+      todayItems.forEach(item => {
+        w.days[tomorrow]["Morning"].push({ id: genId(), text: item.text, done: false });
+      });
+      return w;
+    });
+    setShowRollDay(false);
+  };
   const handleRollover = async (selectedIds) => {
     const nextWeek = getAdjacentWeek(currentWeek, 1);
     const existing = (await loadStorage(`planner-week:${nextWeek}`)) || emptyWeek();
@@ -635,7 +702,8 @@ export default function WeeklyPlanner() {
               <button onClick={toggleAllDays} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
                 {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
-              <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Over {"\u2192"}</button>
+              <button onClick={() => setShowRollDay(true)} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Roll Day {"\u2192"}</button>
+              <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Week {"\u2192"}</button>
             </div>
           </div>
           <div className="mobile-tabs" style={{ display: "none", borderTop: `1px solid ${C.border}` }}>
@@ -736,6 +804,7 @@ export default function WeeklyPlanner() {
         </div>
 
         {showRollover && <RolloverModal items={getIncompleteItems()} onConfirm={handleRollover} onCancel={() => setShowRollover(false)} />}
+        {showRollDay && <RollDayModal items={getTodayIncompleteItems()} todayName={todayName} tomorrowName={getTomorrowName()} onConfirm={handleRollDay} onCancel={() => setShowRollDay(false)} />}
         {showExport && <ExportModal currentWeek={currentWeek} lists={runningLists} onClose={() => setShowExport(false)} />}
         {showQuickNote && <QuickNoteModal note={quickNote} onSave={saveQuickNoteFn} onClose={() => setShowQuickNote(false)} />}
       </div>
