@@ -35,7 +35,7 @@ const font = { heading: "'Syne', sans-serif", body: "'DM Sans', sans-serif" };
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Weekend"];
 const BLOCKS = [
-  { key: "Morning", label: "Morning", icon: "\u25D0", color: C.amber, dim: C.amberDim },
+  { key: "Morning", label: "Morning", icon: "\u25D0", color: C.green, dim: C.greenDim },
   { key: "Afternoon", label: "Afternoon", icon: "\u25D1", color: C.accent, dim: C.accentDim },
   { key: "Admin", label: "Admin", icon: "\u25A4", color: C.slate, dim: C.slateDim },
 ];
@@ -267,23 +267,71 @@ function RolloverModal({ items, onConfirm, onCancel }) {
   );
 }
 
-function RollDayModal({ items, todayName, tomorrowName, onConfirm, onCancel }) {
+function RollDayModal({ weekData, todayName, onConfirm, onCancel }) {
+  const weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+  const todayIdx = weekdayNames.indexOf(todayName);
+  const isWeekend = todayName === "Weekend" || todayIdx === -1;
+
+  // Days that have incomplete tasks and are before today
+  const rollableDays = [];
+  if (!isWeekend) {
+    for (let i = 0; i <= todayIdx; i++) {
+      const day = weekdayNames[i];
+      const hasIncomplete = BLOCKS.some(b => (weekData?.days[day]?.[b.key] || []).some(t => !t.done));
+      if (hasIncomplete) rollableDays.push(day);
+    }
+  }
+
+  const [fromDay, setFromDay] = useState(todayName);
+  const getItemsForDay = (day) => {
+    if (!weekData) return [];
+    const items = [];
+    BLOCKS.forEach(b => { (weekData.days[day]?.[b.key] || []).filter(t => !t.done).forEach(t => items.push({ ...t, block: b.label, blockKey: b.key })); });
+    return items;
+  };
+  const items = getItemsForDay(fromDay);
   const [selected, setSelected] = useState(items.map(i => i.id));
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-  const isWeekend = todayName === "Weekend" || todayName === "Friday";
+
+  // Recalculate selected when fromDay changes
+  const prevFromDay = useRef(fromDay);
+  useEffect(() => {
+    if (prevFromDay.current !== fromDay) {
+      const newItems = getItemsForDay(fromDay);
+      setSelected(newItems.map(i => i.id));
+      prevFromDay.current = fromDay;
+    }
+  }, [fromDay]);
+
+  const fromIdx = weekdayNames.indexOf(fromDay);
+  const toDay = fromIdx < todayIdx ? todayName : (fromIdx < 4 ? weekdayNames[fromIdx + 1] : null);
+
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Day {"\u2192"} {tomorrowName || "Tomorrow"}</h3>
+        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Day {"\u2192"} {toDay || "..."}</h3>
         {isWeekend ? (
           <div style={{ padding: 20, textAlign: "center" }}>
-            <p style={{ fontSize: 13, color: C.muted, fontFamily: font.body }}>Roll Day doesn't apply on {todayName === "Friday" ? "Friday" : "weekends"}. Use <strong>Roll Week</strong> to carry tasks to next Monday.</p>
+            <p style={{ fontSize: 13, color: C.muted, fontFamily: font.body }}>Roll Day doesn't apply on weekends. Use <strong>Roll Week</strong> to carry tasks to next Monday.</p>
           </div>
         ) : (
           <>
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move today's incomplete tasks to {tomorrowName}, keeping them in their same blocks. Uncheck any you want to leave behind.</p>
+            {rollableDays.length > 1 && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: C.muted, fontFamily: font.body, marginRight: 4, lineHeight: "28px" }}>From:</span>
+                {rollableDays.map(d => (
+                  <button key={d} onClick={() => setFromDay(d)} style={{
+                    padding: "4px 12px", borderRadius: 6, fontSize: 12, fontFamily: font.body, fontWeight: 500, cursor: "pointer",
+                    border: fromDay === d ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
+                    background: fromDay === d ? C.accentDim : C.surfaceAlt,
+                    color: fromDay === d ? C.accent : C.muted,
+                  }}>{d}</button>
+                ))}
+              </div>
+            )}
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move {fromDay}'s incomplete tasks to {toDay}, keeping them in their same blocks. Uncheck any you want to leave behind.</p>
             <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
-              {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks today! {"\uD83C\uDF89"}</p>
+              {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks on {fromDay}! {"\uD83C\uDF89"}</p>
               : items.map(item => (
                 <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,106,232,0.2)" : "transparent"}`, marginBottom: 4 }}>
                   <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
@@ -295,8 +343,8 @@ function RollDayModal({ items, todayName, tomorrowName, onConfirm, onCancel }) {
         )}
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontFamily: font.body, fontSize: 13, cursor: "pointer", color: C.muted }}>Cancel</button>
-          {!isWeekend && items.length > 0 && (
-            <button onClick={() => onConfirm(selected)} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: `0 0 16px ${C.accentGlow}` }}>
+          {!isWeekend && items.length > 0 && toDay && (
+            <button onClick={() => onConfirm(selected, fromDay, toDay)} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: `0 0 16px ${C.accentGlow}` }}>
               Roll Day ({selected.length})
             </button>
           )}
@@ -440,6 +488,31 @@ export default function WeeklyPlanner() {
     () => setMobileView("week")
   );
 
+  // Auto-insert "Pray" 2-3 times per week on app load
+  const maybeAddPray = useCallback((wk) => {
+    if (!wk) return wk;
+    const today = new Date();
+    const dayIdx = today.getDay() - 1;
+    if (dayIdx < 0 || dayIdx > 4) return wk; // skip weekends
+    const dayName = DAYS[dayIdx];
+
+    // Check if "Pray" already exists today in any block
+    const alreadyHas = BLOCKS.some(b => (wk.days[dayName]?.[b.key] || []).some(t => t.text === "Pray" || t.text === "*Pray"));
+    if (alreadyHas) return wk;
+
+    // Use a seeded random based on the date so it's consistent per day
+    const dateStr = today.toISOString().split("T")[0];
+    const seed = dateStr.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+    // ~40% chance per day = roughly 2-3 days per 5-day week
+    if ((seed * 7 + dayIdx * 13) % 10 >= 4) return wk;
+
+    // Pick Morning or Afternoon randomly
+    const blockKey = (seed + dayIdx) % 2 === 0 ? "Morning" : "Afternoon";
+    const copy = JSON.parse(JSON.stringify(wk));
+    copy.days[dayName][blockKey].unshift({ id: genId(), text: "Pray", done: false });
+    return copy;
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -450,14 +523,23 @@ export default function WeeklyPlanner() {
         loadStorage("planner-quick-note"),
       ]);
       if (!cancelled) {
-        setWeekData(week || emptyWeek());
+        let wk = week || emptyWeek();
+        // Only add Pray if viewing the current week
+        if (currentWeek === getWeekKey(new Date())) {
+          const updated = maybeAddPray(wk);
+          if (updated !== wk) {
+            wk = updated;
+            saveStorage(`planner-week:${currentWeek}`, wk);
+          }
+        }
+        setWeekData(wk);
         setRunningLists(lists || emptyLists());
         if (note) setQuickNote(note);
         setLoading(false);
       }
     })();
     return () => { cancelled = true; };
-  }, [currentWeek]);
+  }, [currentWeek, maybeAddPray]);
 
   const debouncedSave = useCallback((key, data) => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
@@ -604,16 +686,19 @@ export default function WeeklyPlanner() {
     return DAYS[idx + 1];
   };
 
-  const handleRollDay = (selectedIds) => {
-    const tomorrow = getTomorrowName();
-    if (!tomorrow || !weekData) return;
-    const todayItems = getTodayIncompleteItems().filter(i => selectedIds.includes(i.id));
+  const handleRollDay = (selectedIds, fromDay, toDay) => {
+    if (!toDay || !weekData) return;
     updateWeek(w => {
-      todayItems.forEach(item => {
-        // Remove from today
-        w.days[todayName][item.blockKey] = w.days[todayName][item.blockKey].filter(t => t.id !== item.id);
-        // Add to tomorrow
-        w.days[tomorrow][item.blockKey].push({ id: genId(), text: item.text, done: false });
+      BLOCKS.forEach(b => {
+        const arr = w.days[fromDay]?.[b.key] || [];
+        const toMove = arr.filter(t => selectedIds.includes(t.id) && !t.done);
+        w.days[fromDay][b.key] = arr.filter(t => !selectedIds.includes(t) || t.done);
+        // Remove selected incomplete from source
+        w.days[fromDay][b.key] = arr.filter(t => !selectedIds.includes(t.id) || t.done);
+        // Add to destination
+        toMove.forEach(t => {
+          w.days[toDay][b.key].push({ id: genId(), text: t.text, done: false });
+        });
       });
       return w;
     });
@@ -807,7 +892,7 @@ export default function WeeklyPlanner() {
         </div>
 
         {showRollover && <RolloverModal items={getIncompleteItems()} onConfirm={handleRollover} onCancel={() => setShowRollover(false)} />}
-        {showRollDay && <RollDayModal items={getTodayIncompleteItems()} todayName={todayName} tomorrowName={getTomorrowName()} onConfirm={handleRollDay} onCancel={() => setShowRollDay(false)} />}
+        {showRollDay && <RollDayModal weekData={weekData} todayName={todayName} onConfirm={handleRollDay} onCancel={() => setShowRollDay(false)} />}
         {showExport && <ExportModal currentWeek={currentWeek} lists={runningLists} onClose={() => setShowExport(false)} />}
         {showQuickNote && <QuickNoteModal note={quickNote} onSave={saveQuickNoteFn} onClose={() => setShowQuickNote(false)} />}
       </div>
