@@ -1,0 +1,32 @@
+name: Red task alert
+
+on:
+  schedule:
+    # 4pm Central target. Times are UTC; multiple runs cover CDT/CST and GitHub's scheduling delays.
+    # The script only acts once per day, between 3:30 and 5:30pm Central.
+    - cron: "45 20 * * *"
+    - cron: "45 21 * * *"
+    - cron: "15 22 * * *"
+  workflow_dispatch:
+    inputs:
+      test:
+        description: "Send a test alert now (ignores the time window and sends even with no red tasks)"
+        type: boolean
+        default: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node scripts/red-task-alert.mjs
+        env:
+          TEST_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.test && 'true' || 'false' }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          APP_URL: ${{ vars.APP_URL }}

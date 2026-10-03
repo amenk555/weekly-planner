@@ -217,6 +217,7 @@ function HamburgerMenu({ onExport }) {
                 ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
                 ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
+                ["4pm red alert", "Any red task still open for today after 4pm shows a banner at the top, and triggers an email and phone push"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
@@ -460,6 +461,8 @@ export default function WeeklyPlanner() {
   const [quickNote, setQuickNote] = useState("");
   const [collapsedLists, setCollapsedLists] = useState({});
   const [allCollapsed, setAllCollapsed] = useState(true);
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => { const id = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(id); }, []);
   const saveTimeout = useRef(null);
   const noteTimeout = useRef(null);
   const isCurrentWeek = currentWeek === getWeekKey(new Date());
@@ -695,8 +698,11 @@ export default function WeeklyPlanner() {
 
   const stats = (() => { if (!weekData) return { total: 0, done: 0 }; let total = 0, done = 0; DAYS.forEach(d => BLOCKS.forEach(b => { (weekData.days[d]?.[b.key] || []).forEach(t => { total++; if (t.done) done++; }); })); return { total, done }; })();
   const pct = stats.total ? Math.round((stats.done / stats.total) * 100) : 0;
-  const todayIndex = new Date().getDay() - 1;
+  const todayIndex = now.getDay() - 1;
   const todayName = todayIndex >= 0 && todayIndex < 5 ? DAYS[todayIndex] : (todayIndex >= 5 || todayIndex === -1 ? "Weekend" : null);
+  const openRedToday = isCurrentWeek && now.getHours() >= 16 && weekData
+    ? BLOCKS.flatMap(b => (weekData.days[todayName]?.[b.key] || []).filter(t => !t.done && t.text.startsWith("**")).map(t => ({ ...t, block: b.label })))
+    : [];
 
   if (loading) return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: C.bg, fontFamily: font.body, color: C.dim }}>
@@ -813,6 +819,18 @@ export default function WeeklyPlanner() {
           </div>
 
           <div className="week-panel" style={{ flex: 1, overflowY: "auto", padding: 16, display: mobileView === "week" ? "block" : "none" }}>
+            {openRedToday.length > 0 && (
+              <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.25)" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.danger, marginBottom: 6 }}>
+                  {"⚠"} {openRedToday.length} red task{openRedToday.length === 1 ? "" : "s"} still open today
+                </div>
+                {openRedToday.map(t => (
+                  <div key={t.id} style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+                    {"•"} {t.text.slice(2)} <span style={{ color: C.muted, fontSize: 11 }}>({t.block})</span>
+                  </div>
+                ))}
+              </div>
+            )}
             <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontFamily: font.heading }}>Weekly Priorities</div>
               <textarea value={weekData?.priorities || ""} onChange={e => updateWeek(w => ({ ...w, priorities: e.target.value }))} placeholder="What matters most this week?" rows={2}
