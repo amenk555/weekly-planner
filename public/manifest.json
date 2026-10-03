@@ -4,8 +4,8 @@
   "description": "Personal weekly planner and task manager",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F6F8",
-  "theme_color": "#4F6AE8",
+  "background_color": "#F7F8FA",
+  "theme_color": "#4F46E5",
   "orientation": "any",
   "icons": [
     {

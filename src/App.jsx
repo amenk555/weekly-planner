@@ -21,17 +21,15 @@ const loadStorage = async (k) => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
 
-const FONTS_URL = "https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@300;400;500;600&display=swap";
-
 const C = {
-  bg: "#F5F6F8", surface: "#FFFFFF", surfaceAlt: "#FAFBFC",
-  text: "#1A1D26", muted: "#6B7280", dim: "#B0B5C0", border: "rgba(0,0,0,0.07)",
-  accent: "#4F6AE8", green: "#22C55E", amber: "#E8930C", slate: "#64748B", danger: "#EF4444",
-  accentDim: "rgba(79,106,232,0.08)", accentGlow: "rgba(79,106,232,0.15)",
-  greenDim: "rgba(34,197,94,0.08)",
-  amberDim: "rgba(232,147,12,0.07)", slateDim: "rgba(100,116,139,0.06)",
+  bg: "#F7F8FA", surface: "#FFFFFF", surfaceAlt: "#F3F4F6",
+  text: "#111827", muted: "#6B7280", dim: "#9CA3AF", border: "rgba(17,24,39,0.08)",
+  accent: "#4F46E5", green: "#16A34A", amber: "#D97706", slate: "#64748B", danger: "#DC2626",
+  accentDim: "rgba(79,70,229,0.08)", accentGlow: "rgba(79,70,229,0.15)",
+  greenDim: "rgba(22,163,74,0.08)",
+  amberDim: "rgba(217,119,6,0.07)", slateDim: "rgba(100,116,139,0.06)",
 };
-const font = { heading: "'Syne', sans-serif", body: "'DM Sans', sans-serif" };
+const font = { heading: "Arial, Helvetica, sans-serif", body: "Arial, Helvetica, sans-serif" };
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Weekend"];
 const BLOCKS = [
@@ -177,7 +175,7 @@ function HamburgerMenu({ onExport }) {
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
       <button onClick={() => setOpen(p => !p)} style={{
-        background: open ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${open ? "rgba(79,106,232,0.3)" : C.border}`,
+        background: open ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${open ? "rgba(79,70,229,0.3)" : C.border}`,
         color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, fontFamily: font.body, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
@@ -250,7 +248,7 @@ function RolloverModal({ items, onConfirm, onCancel }) {
         <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
           {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks to roll over! {"\uD83C\uDF89"}</p>
           : items.map(item => (
-            <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,106,232,0.2)" : "transparent"}`, marginBottom: 4 }}>
+            <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,70,229,0.2)" : "transparent"}`, marginBottom: 4 }}>
               <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
               <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.day} {"\u00B7"} {item.block}</span></div>
             </label>
@@ -268,21 +266,10 @@ function RolloverModal({ items, onConfirm, onCancel }) {
 }
 
 function RollDayModal({ weekData, todayName, onConfirm, onCancel }) {
-  const weekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
-  const todayIdx = weekdayNames.indexOf(todayName);
-  const isWeekend = todayName === "Weekend" || todayIdx === -1;
+  const defaultFrom = DAYS.includes(todayName) ? todayName : DAYS[0];
+  const [fromDay, setFromDay] = useState(defaultFrom);
+  const [toDay, setToDay] = useState(DAYS[(DAYS.indexOf(defaultFrom) + 1) % DAYS.length]);
 
-  // Days that have incomplete tasks and are before today
-  const rollableDays = [];
-  if (!isWeekend) {
-    for (let i = 0; i <= todayIdx; i++) {
-      const day = weekdayNames[i];
-      const hasIncomplete = BLOCKS.some(b => (weekData?.days[day]?.[b.key] || []).some(t => !t.done));
-      if (hasIncomplete) rollableDays.push(day);
-    }
-  }
-
-  const [fromDay, setFromDay] = useState(todayName);
   const getItemsForDay = (day) => {
     if (!weekData) return [];
     const items = [];
@@ -293,57 +280,51 @@ function RollDayModal({ weekData, todayName, onConfirm, onCancel }) {
   const [selected, setSelected] = useState(items.map(i => i.id));
   const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
 
-  // Recalculate selected when fromDay changes
+  // Recalculate selected when fromDay changes; nudge toDay off of fromDay if they collide
   const prevFromDay = useRef(fromDay);
   useEffect(() => {
     if (prevFromDay.current !== fromDay) {
       const newItems = getItemsForDay(fromDay);
       setSelected(newItems.map(i => i.id));
       prevFromDay.current = fromDay;
+      if (toDay === fromDay) setToDay(DAYS[(DAYS.indexOf(fromDay) + 1) % DAYS.length]);
     }
   }, [fromDay]);
 
-  const fromIdx = weekdayNames.indexOf(fromDay);
-  const toDay = fromIdx < todayIdx ? todayName : (fromIdx < 4 ? weekdayNames[fromIdx + 1] : null);
+  const daySelector = (label, value, onChange, excludeDay) => (
+    <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <span style={{ fontSize: 12, color: C.muted, fontFamily: font.body, marginRight: 4, lineHeight: "28px" }}>{label}</span>
+      {DAYS.map(d => (
+        <button key={d} disabled={d === excludeDay} onClick={() => onChange(d)} style={{
+          padding: "4px 12px", borderRadius: 6, fontSize: 12, fontFamily: font.body, fontWeight: 500,
+          cursor: d === excludeDay ? "not-allowed" : "pointer", opacity: d === excludeDay ? 0.35 : 1,
+          border: value === d ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
+          background: value === d ? C.accentDim : C.surfaceAlt,
+          color: value === d ? C.accent : C.muted,
+        }}>{d}</button>
+      ))}
+    </div>
+  );
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Day {"\u2192"} {toDay || "..."}</h3>
-        {isWeekend ? (
-          <div style={{ padding: 20, textAlign: "center" }}>
-            <p style={{ fontSize: 13, color: C.muted, fontFamily: font.body }}>Roll Day doesn't apply on weekends. Use <strong>Roll Week</strong> to carry tasks to next Monday.</p>
-          </div>
-        ) : (
-          <>
-            {rollableDays.length > 1 && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 12, color: C.muted, fontFamily: font.body, marginRight: 4, lineHeight: "28px" }}>From:</span>
-                {rollableDays.map(d => (
-                  <button key={d} onClick={() => setFromDay(d)} style={{
-                    padding: "4px 12px", borderRadius: 6, fontSize: 12, fontFamily: font.body, fontWeight: 500, cursor: "pointer",
-                    border: fromDay === d ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
-                    background: fromDay === d ? C.accentDim : C.surfaceAlt,
-                    color: fromDay === d ? C.accent : C.muted,
-                  }}>{d}</button>
-                ))}
-              </div>
-            )}
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move {fromDay}'s incomplete tasks to {toDay}, keeping them in their same blocks. Uncheck any you want to leave behind.</p>
-            <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
-              {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks on {fromDay}! {"\uD83C\uDF89"}</p>
-              : items.map(item => (
-                <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,106,232,0.2)" : "transparent"}`, marginBottom: 4 }}>
-                  <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
-                  <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.block}</span></div>
-                </label>
-              ))}
-            </div>
-          </>
-        )}
+        <h3 style={{ margin: "0 0 12px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Day {"\u2192"} {toDay}</h3>
+        {daySelector("From:", fromDay, setFromDay, toDay)}
+        {daySelector("To:", toDay, setToDay, fromDay)}
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Move {fromDay}'s incomplete tasks to {toDay}, keeping them in their same blocks. Uncheck any you want to leave behind.</p>
+        <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
+          {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks on {fromDay}! {"\uD83C\uDF89"}</p>
+          : items.map(item => (
+            <label key={item.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 8, cursor: "pointer", background: selected.includes(item.id) ? C.accentDim : "transparent", border: `1px solid ${selected.includes(item.id) ? "rgba(79,70,229,0.2)" : "transparent"}`, marginBottom: 4 }}>
+              <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} style={{ marginTop: 2, accentColor: C.accent }} />
+              <div><span style={{ fontSize: 13, color: C.text }}>{item.text}</span><span style={{ display: "block", fontSize: 11, color: C.dim, marginTop: 2 }}>{item.block}</span></div>
+            </label>
+          ))}
+        </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onCancel} style={{ padding: "8px 18px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, fontFamily: font.body, fontSize: 13, cursor: "pointer", color: C.muted }}>Cancel</button>
-          {!isWeekend && items.length > 0 && toDay && (
+          {items.length > 0 && (
             <button onClick={() => onConfirm(selected, fromDay, toDay)} style={{ padding: "8px 18px", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer", boxShadow: `0 0 16px ${C.accentGlow}` }}>
               Roll Day ({selected.length})
             </button>
@@ -423,7 +404,7 @@ function QuickNoteModal({ note, onSave, onClose }) {
           .quick-note-area::-webkit-scrollbar { width: 4px; }
           .quick-note-area::-webkit-scrollbar-track { background: transparent; }
           .quick-note-area::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
-          .quick-note-area::-webkit-scrollbar-thumb:hover { background: #B0B5C0; }
+          .quick-note-area::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
           .quick-note-area { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
         `}</style>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -747,7 +728,6 @@ export default function WeeklyPlanner() {
 
   return (
     <>
-      <link href={FONTS_URL} rel="stylesheet" />
       <div style={{ minHeight: "100vh", background: C.bg, color: C.text, fontFamily: font.body }}
         {...swipeHandlers}>
         <style>{`
@@ -786,7 +766,7 @@ export default function WeeklyPlanner() {
             <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
               {saving && <span style={{ fontSize: 11, color: C.dim, display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, animation: "pulse 1s infinite" }} /> syncing</span>}
               {!isCurrentWeek && <button onClick={() => setCurrentWeek(getWeekKey(new Date()))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Today</button>}
-              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${showQuickNote ? "rgba(79,106,232,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
+              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${showQuickNote ? "rgba(79,70,229,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
               <button onClick={toggleAllDays} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
                 {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
@@ -836,7 +816,7 @@ export default function WeeklyPlanner() {
             <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
               <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontFamily: font.heading }}>Weekly Priorities</div>
               <textarea value={weekData?.priorities || ""} onChange={e => updateWeek(w => ({ ...w, priorities: e.target.value }))} placeholder="What matters most this week?" rows={2}
-                style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 16, fontFamily: font.body, color: C.text, resize: "vertical", lineHeight: 1.6 }} />
+                style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, fontFamily: font.body, color: C.text, resize: "vertical", lineHeight: 1.6 }} />
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -849,10 +829,10 @@ export default function WeeklyPlanner() {
                 const dayDateStr = isWeekend
                   ? (() => { const mon = new Date(currentWeek + "T00:00:00"); const sat = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 5); const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} \u2013 ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
                   : getDayDate(day).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
-                const bgColor = isToday ? "rgba(79,106,232,0.03)" : isWeekend ? "#F0F1F3" : C.surfaceAlt;
-                const borderColor = isToday ? "1px solid rgba(79,106,232,0.3)" : `1px solid ${C.border}`;
+                const bgColor = isToday ? "rgba(79,70,229,0.03)" : isWeekend ? "#EEF0F3" : C.surfaceAlt;
+                const borderColor = isToday ? "1px solid rgba(79,70,229,0.3)" : `1px solid ${C.border}`;
                 return (
-                  <div key={day} style={{ borderRadius: 10, overflow: "hidden", border: borderColor, background: bgColor, boxShadow: isToday ? "0 0 30px rgba(79,106,232,0.06)" : "0 1px 3px rgba(0,0,0,0.03)" }}>
+                  <div key={day} style={{ borderRadius: 10, overflow: "hidden", border: borderColor, background: bgColor, boxShadow: isToday ? "0 0 30px rgba(79,70,229,0.06)" : "0 1px 3px rgba(0,0,0,0.03)" }}>
                     <button onClick={() => setCollapsedDays(prev => ({ ...prev, [day]: !prev[day] }))}
                       style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 16px", border: "none", background: "transparent", cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
