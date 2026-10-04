@@ -262,7 +262,7 @@ function HamburgerMenu({ onExport }) {
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
-                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [ ] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines"],
+                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
               ].map(([title, desc], i) => (
@@ -486,10 +486,37 @@ function NotesEditor({ value, onChange, taRef }) {
   const text = value.replace(/\r\n?/g, "\n")
     .replace(/^([ \t]*)[\u2010\u2011\u2012\u2013\u2212](?=[ \u00A0])/gm, "$1-")
     .replace(/^([ \t]*)([-\u2022\u2014*]|\d+[.)])\u00A0/gm, "$1$2 ");
+  const justMadeBox = useRef(false);
+
+  // "[]" typed or pasted at a line start becomes a checkbox. Fixed up after the fact rather than in render so the caret doesn't jump.
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta || !/^[ \t]*\[\]/m.test(ta.value)) return;
+    const fix = (str) => str.replace(/^([ \t]*)\[\] ?/gm, "$1[ ] ");
+    const caret = fix(ta.value.slice(0, ta.selectionStart)).length;
+    onChange(fix(ta.value));
+    requestAnimationFrame(() => { if (document.activeElement === ta) ta.setSelectionRange(caret, caret); });
+  }, [text]);
 
   const onKeyDown = (e) => {
     const ta = e.target;
     const { value: v, selectionStart: s, selectionEnd: en } = ta;
+    const skipSpace = justMadeBox.current;
+    justMadeBox.current = false;
+    if (e.key === "]" && s === en && !e.ctrlKey && !e.metaKey && !e.altKey && /^[ \t]*\[$/.test(v.slice(lineBounds(v, s).start, s))) {
+      e.preventDefault();
+      insertText(ta, " ] ", onChange);
+      justMadeBox.current = true;
+      return;
+    }
+    if (e.key === "]" && s === en && !e.ctrlKey && !e.metaKey && !e.altKey && /^[ \t]*\[[ xX]\] \[$/.test(v.slice(lineBounds(v, s).start, s))) {
+      e.preventDefault();
+      ta.setSelectionRange(s - 1, s);
+      insertText(ta, "", onChange);
+      justMadeBox.current = true;
+      return;
+    }
+    if (e.key === " " && skipSpace && v[s - 1] === " ") { e.preventDefault(); return; }
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       const { start } = lineBounds(v, s);
@@ -587,7 +614,7 @@ function NotesEditor({ value, onChange, taRef }) {
       <textarea ref={taRef} className="notes-ta" value={text} spellCheck
         onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} onClick={onClick}
         onScroll={e => { if (mirrorRef.current) mirrorRef.current.scrollTop = e.target.scrollTop; }}
-        placeholder={"Jot down anything...\n\n- Start a line with - or 1. for a list\n[ ] Start a line with [ ] for a checkbox"}
+        placeholder={"Jot down anything...\n\n- Start a line with - or 1. for a list\n[ ] Start a line with [] for a checkbox"}
         style={{ ...shared, width: "100%", height: "100%", resize: "none", outline: "none", background: "transparent", color: "transparent", caretColor: C.text }} />
     </div>
   );
@@ -691,7 +718,7 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
       </div>
       <NotesEditor value={note} onChange={onSave} taRef={taRef} />
       <div style={{ padding: "6px 20px", fontSize: 11, color: C.dim, borderTop: `1px solid ${C.border}`, background: C.surface }}>
-        <b>-</b> or <b>1.</b> list {"\u00B7"} <b>[ ]</b> checkbox {"\u00B7"} {docked ? <><b>Tab</b> indent {"\u00B7"} <b>Ctrl+Enter</b> make/check a box {"\u00B7"} <b>Shift+Alt+\u2191\u2193</b> move lines</> : "tap a box to check it"}
+        <b>-</b> or <b>1.</b> list {"\u00B7"} <b>[]</b> checkbox {"\u00B7"} {docked ? <><b>Tab</b> indent {"\u00B7"} <b>Ctrl+Enter</b> make/check a box {"\u00B7"} <b>Shift+Alt+\u2191\u2193</b> move lines</> : "tap a box to check it"}
       </div>
     </>
   );
