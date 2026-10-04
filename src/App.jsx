@@ -76,6 +76,16 @@ const parseTaskText = (text) => {
   return { display: text, bold: false, red: false };
 };
 
+// Completed tasks sink to the bottom; unchecked tasks return to the end of the open ones.
+const toggleAndReposition = (arr, id) => {
+  const i = arr.findIndex(t => t.id === id);
+  if (i === -1) return;
+  const [t] = arr.splice(i, 1);
+  t.done = !t.done;
+  if (t.done) arr.push(t);
+  else { const firstDone = arr.findIndex(x => x.done); arr.splice(firstDone === -1 ? arr.length : firstDone, 0, t); }
+};
+
 let dragPayload = null;
 
 function DropZone({ onDrop, children, style }) {
@@ -552,7 +562,7 @@ export default function WeeklyPlanner() {
   };
 
   const addTask = (day, block, text) => { updateWeek(w => { w.days[day][block].push({ id: genId(), text, done: false }); return w; }); };
-  const toggleTask = (day, block, id) => { updateWeek(w => { const t = w.days[day][block].find(x => x.id === id); if (t) t.done = !t.done; return w; }); };
+  const toggleTask = (day, block, id) => { updateWeek(w => { toggleAndReposition(w.days[day][block], id); return w; }); };
   const editTask = (day, block, id, text) => { updateWeek(w => { const t = w.days[day][block].find(x => x.id === id); if (t) t.text = text; return w; }); };
   const deleteTask = (day, block, id) => { updateWeek(w => { w.days[day][block] = w.days[day][block].filter(x => x.id !== id); return w; }); };
 
@@ -570,7 +580,7 @@ export default function WeeklyPlanner() {
   };
 
   const addListItem = (ln, text) => { updateLists(l => { if (!l[ln]) l[ln] = []; l[ln].push({ id: genId(), text, done: false }); return l; }); };
-  const toggleListItem = (ln, id) => { updateLists(l => { const t = l[ln]?.find(x => x.id === id); if (t) t.done = !t.done; return l; }); };
+  const toggleListItem = (ln, id) => { updateLists(l => { if (l[ln]) toggleAndReposition(l[ln], id); return l; }); };
   const editListItem = (ln, id, text) => { updateLists(l => { const t = l[ln]?.find(x => x.id === id); if (t) t.text = text; return l; }); };
   const deleteListItem = (ln, id) => { updateLists(l => { l[ln] = l[ln].filter(x => x.id !== id); return l; }); };
 
