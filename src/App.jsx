@@ -483,7 +483,9 @@ function NotesMirror({ text }) {
 
 function NotesEditor({ value, onChange, taRef }) {
   const mirrorRef = useRef(null);
-  const text = value.replace(/\r\n?/g, "\n");
+  const text = value.replace(/\r\n?/g, "\n")
+    .replace(/^([ \t]*)[\u2010\u2011\u2012\u2013\u2212](?=[ \u00A0])/gm, "$1-")
+    .replace(/^([ \t]*)([-\u2022\u2014*]|\d+[.)])\u00A0/gm, "$1$2 ");
 
   const onKeyDown = (e) => {
     const ta = e.target;
@@ -540,7 +542,7 @@ function NotesEditor({ value, onChange, taRef }) {
 
   const shared = {
     position: "absolute", inset: 0, margin: 0, border: "none", padding: "18px 22px 40px", boxSizing: "border-box",
-    fontFamily: font.body, fontSize: 14, lineHeight: 1.75, letterSpacing: "normal", tabSize: 2,
+    fontFamily: font.body, fontSize: 14, lineHeight: "21px", letterSpacing: "normal", tabSize: 2,
     whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: "normal", overflowY: "scroll",
   };
   return (
@@ -555,7 +557,7 @@ function NotesEditor({ value, onChange, taRef }) {
         .notes-mirror .ndone { color: ${C.dim}; text-decoration: line-through; }
         .notes-mirror .nbul { color: ${C.accent}; }
         .notes-mirror .ndash { position: relative; color: transparent; }
-        .notes-mirror .ndash::before { content: ""; position: absolute; left: -2.5px; width: 7px; top: 55%; height: 2px; border-radius: 1px; transform: translateY(-50%); background: ${C.text}; }
+        .notes-mirror .ndash::before { content: "\u2013"; position: absolute; left: -3.5px; top: -1px; font-weight: 700; color: ${C.text}; }
       `}</style>
       <div ref={mirrorRef} className="notes-mirror" aria-hidden="true" style={{ ...shared, color: C.text, pointerEvents: "none" }}>
         <NotesMirror text={text} />
