@@ -262,7 +262,7 @@ function HamburgerMenu({ onExport }) {
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
-                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [ ] for checkboxes, and use Add to planner to turn highlighted lines into tasks"],
+                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [ ] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
               ].map(([title, desc], i) => (
@@ -517,6 +517,28 @@ function NotesEditor({ value, onChange, taRef }) {
       insertText(ta, "\n" + m[1] + next, onChange);
       return;
     }
+    if (e.altKey && e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.preventDefault();
+      const blockStart = lineBounds(v, s).start;
+      const blockEnd = lineBounds(v, Math.max(s, en - (en > s && v[en - 1] === "\n" ? 1 : 0))).end;
+      const block = v.slice(blockStart, blockEnd);
+      if (e.key === "ArrowUp") {
+        if (blockStart === 0) return;
+        const prevStart = lineBounds(v, blockStart - 1).start;
+        const prev = v.slice(prevStart, blockStart - 1);
+        ta.setSelectionRange(prevStart, blockEnd);
+        insertText(ta, block + "\n" + prev, onChange);
+        ta.setSelectionRange(s - prev.length - 1, en - prev.length - 1);
+      } else {
+        if (blockEnd >= v.length) return;
+        const nextEnd = lineBounds(v, blockEnd + 1).end;
+        const next = v.slice(blockEnd + 1, nextEnd);
+        ta.setSelectionRange(blockStart, nextEnd);
+        insertText(ta, next + "\n" + block, onChange);
+        ta.setSelectionRange(s + next.length + 1, en + next.length + 1);
+      }
+      return;
+    }
     if (e.key === "Tab") {
       e.preventDefault();
       const blockStart = lineBounds(v, s).start;
@@ -669,7 +691,7 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
       </div>
       <NotesEditor value={note} onChange={onSave} taRef={taRef} />
       <div style={{ padding: "6px 20px", fontSize: 11, color: C.dim, borderTop: `1px solid ${C.border}`, background: C.surface }}>
-        <b>-</b> or <b>1.</b> list {"\u00B7"} <b>[ ]</b> checkbox {"\u00B7"} {docked ? <><b>Tab</b> indent {"\u00B7"} <b>Ctrl+Enter</b> make/check a box</> : "tap a box to check it"}
+        <b>-</b> or <b>1.</b> list {"\u00B7"} <b>[ ]</b> checkbox {"\u00B7"} {docked ? <><b>Tab</b> indent {"\u00B7"} <b>Ctrl+Enter</b> make/check a box {"\u00B7"} <b>Shift+Alt+\u2191\u2193</b> move lines</> : "tap a box to check it"}
       </div>
     </>
   );
