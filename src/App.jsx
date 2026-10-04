@@ -80,6 +80,8 @@ const parseTaskText = (text) => {
 // List order: open tasks, then open ">>" admin tasks, then completed. Stable sort keeps manual order within each group.
 const taskRank = (t) => (t.done ? 2 : t.text.startsWith(">>") ? 1 : 0);
 const sortTasks = (arr) => arr.sort((a, b) => taskRank(a) - taskRank(b));
+const sortWeek = (wk) => { Object.values(wk?.days || {}).forEach(day => Object.values(day || {}).forEach(a => Array.isArray(a) && sortTasks(a))); return wk; };
+const sortLists = (l) => { Object.values(l || {}).forEach(a => Array.isArray(a) && sortTasks(a)); return l; };
 
 // Completed tasks sink to the bottom; unchecked tasks return to the end of the open ones.
 const toggleAndReposition = (arr, id) => {
@@ -128,7 +130,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
     <div draggable={!editing}
       onDragStart={e => { dragPayload = { task: { ...task }, type: dragType, zone: dragZone, index }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); e.currentTarget.style.opacity = "0.4"; }}
       onDragEnd={e => { e.currentTarget.style.opacity = "1"; }}
-      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: parsed.admin ? "5px 6px 5px 22px" : "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
       <button onClick={() => onToggle(task.id)} style={{ width: 16, height: 16, minWidth: 16, marginTop: 2, borderRadius: 4, padding: 0, border: task.done ? "none" : `1.5px solid ${C.dim}`, background: task.done ? C.accent : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {task.done && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4.5 7.5L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
       </button>
@@ -145,7 +147,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
             fontWeight: parsed.bold ? 700 : 400,
             fontStyle: parsed.admin ? "italic" : "normal",
             lineHeight: 1.45, wordBreak: "break-word",
-          }}>{parsed.display}</span>
+          }}>{parsed.admin && <span style={{ fontStyle: "normal", fontWeight: 600, color: C.muted, marginRight: 4 }}>(A)</span>}{parsed.display}</span>
       )}
       <button onClick={() => onDelete(task.id)}
         style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, padding: "0 2px", lineHeight: 1, marginTop: 1, flexShrink: 0 }}
@@ -233,7 +235,7 @@ function HamburgerMenu({ onExport }) {
                 ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
                 ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
-                ["Admin task", "Type >> before the text (e.g., >>Expense report) for an indented, italic task that stays below your regular tasks"],
+                ["Admin task", "Type >> before the text (e.g., >>Expense report) for an italic task marked (A) that stays below your regular tasks"],
                 ["4pm red alert", "Any red task still open for today after 4pm shows a banner at the top, and triggers an email and phone push"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
@@ -533,8 +535,8 @@ export default function WeeklyPlanner() {
             saveStorage(`planner-week:${currentWeek}`, wk);
           }
         }
-        setWeekData(wk);
-        setRunningLists(lists || emptyLists());
+        setWeekData(sortWeek(wk));
+        setRunningLists(sortLists(lists || emptyLists()));
         if (note) setQuickNote(note);
         setLoading(false);
       }
@@ -564,14 +566,14 @@ export default function WeeklyPlanner() {
   const updateWeek = (updater) => {
     setWeekData(prev => {
       const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater;
-      Object.values(next.days || {}).forEach(day => Object.values(day || {}).forEach(a => Array.isArray(a) && sortTasks(a)));
+      sortWeek(next);
       debouncedSave(`planner-week:${currentWeek}`, next); return next;
     });
   };
   const updateLists = (updater) => {
     setRunningLists(prev => {
       const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater;
-      Object.values(next || {}).forEach(a => Array.isArray(a) && sortTasks(a));
+      sortLists(next);
       debouncedSave("planner-running-lists", next); return next;
     });
   };
