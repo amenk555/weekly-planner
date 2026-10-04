@@ -71,10 +71,15 @@ const emptyLists = () => { const l = {}; LISTS.forEach(li => { l[li.key] = []; }
 
 // Parse task text for bold (*) and bold+red (**) prefixes
 const parseTaskText = (text) => {
+  if (text.startsWith(">>")) return { display: text.slice(2).trim(), bold: false, red: false, admin: true };
   if (text.startsWith("**")) return { display: text.slice(2), bold: true, red: true };
   if (text.startsWith("*")) return { display: text.slice(1), bold: true, red: false };
   return { display: text, bold: false, red: false };
 };
+
+// List order: open tasks, then open ">>" admin tasks, then completed. Stable sort keeps manual order within each group.
+const taskRank = (t) => (t.done ? 2 : t.text.startsWith(">>") ? 1 : 0);
+const sortTasks = (arr) => arr.sort((a, b) => taskRank(a) - taskRank(b));
 
 // Completed tasks sink to the bottom; unchecked tasks return to the end of the open ones.
 const toggleAndReposition = (arr, id) => {
@@ -123,7 +128,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
     <div draggable={!editing}
       onDragStart={e => { dragPayload = { task: { ...task }, type: dragType, zone: dragZone, index }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); e.currentTarget.style.opacity = "0.4"; }}
       onDragEnd={e => { e.currentTarget.style.opacity = "1"; }}
-      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: parsed.admin ? "5px 6px 5px 22px" : "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
       <button onClick={() => onToggle(task.id)} style={{ width: 16, height: 16, minWidth: 16, marginTop: 2, borderRadius: 4, padding: 0, border: task.done ? "none" : `1.5px solid ${C.dim}`, background: task.done ? C.accent : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {task.done && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4.5 7.5L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
       </button>
@@ -138,6 +143,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
             textDecoration: task.done ? "line-through" : "none",
             color: task.done ? C.dim : parsed.red ? C.danger : C.text,
             fontWeight: parsed.bold ? 700 : 400,
+            fontStyle: parsed.admin ? "italic" : "normal",
             lineHeight: 1.45, wordBreak: "break-word",
           }}>{parsed.display}</span>
       )}
@@ -227,6 +233,7 @@ function HamburgerMenu({ onExport }) {
                 ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
                 ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
+                ["Admin task", "Type >> before the text (e.g., >>Expense report) for an indented, italic task that stays below your regular tasks"],
                 ["4pm red alert", "Any red task still open for today after 4pm shows a banner at the top, and triggers an email and phone push"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
@@ -555,10 +562,18 @@ export default function WeeklyPlanner() {
   };
 
   const updateWeek = (updater) => {
-    setWeekData(prev => { const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater; debouncedSave(`planner-week:${currentWeek}`, next); return next; });
+    setWeekData(prev => {
+      const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater;
+      Object.values(next.days || {}).forEach(day => Object.values(day || {}).forEach(a => Array.isArray(a) && sortTasks(a)));
+      debouncedSave(`planner-week:${currentWeek}`, next); return next;
+    });
   };
   const updateLists = (updater) => {
-    setRunningLists(prev => { const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater; debouncedSave("planner-running-lists", next); return next; });
+    setRunningLists(prev => {
+      const next = typeof updater === "function" ? updater(JSON.parse(JSON.stringify(prev))) : updater;
+      Object.values(next || {}).forEach(a => Array.isArray(a) && sortTasks(a));
+      debouncedSave("planner-running-lists", next); return next;
+    });
   };
 
   const addTask = (day, block, text) => { updateWeek(w => { w.days[day][block].push({ id: genId(), text, done: false }); return w; }); };
