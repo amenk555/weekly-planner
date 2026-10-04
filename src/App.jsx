@@ -262,7 +262,7 @@ function HamburgerMenu({ onExport }) {
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
-                ["Quick Notes", "Tap \u270E Notes for a scratchpad that syncs across devices"],
+                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [ ] for checkboxes, and use Add to planner to turn highlighted lines into tasks"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
               ].map(([title, desc], i) => (
@@ -436,30 +436,265 @@ function ExportModal({ currentWeek, lists, onClose }) {
   );
 }
 
-function QuickNoteModal({ note, onSave, onClose }) {
-  const [text, setText] = useState(note);
+const LIST_PREFIX_RE = /^(\s*)(\[[ xX]\] |[-\u2022\u2014*] |(\d+)([.)]) )/;
+const CHECKBOX_RE = /^(\s*)\[([ xX])\]/;
+
+// Inserts through execCommand so the browser's undo history keeps working.
+const insertText = (ta, text, onChange) => {
+  ta.focus();
+  if (!document.execCommand("insertText", false, text)) {
+    ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end");
+    onChange(ta.value);
+  }
+};
+
+const lineBounds = (value, pos) => {
+  const start = value.lastIndexOf("\n", pos - 1) + 1;
+  const end = value.indexOf("\n", pos);
+  return { start, end: end === -1 ? value.length : end };
+};
+
+const toggleCheckboxAt = (ta, lineStart, onChange) => {
+  const m = ta.value.slice(lineStart).match(CHECKBOX_RE);
+  if (!m) return false;
+  const markPos = lineStart + m[1].length + 1;
+  const caret = ta.selectionStart;
+  ta.setSelectionRange(markPos, markPos + 1);
+  insertText(ta, m[2] === " " ? "x" : " ", onChange);
+  ta.setSelectionRange(caret, caret);
+  return true;
+};
+
+// Styled copy of the text drawn behind a transparent textarea, so checkboxes and done items render while editing stays native.
+function NotesMirror({ text }) {
+  return text.split("\n").map((line, i) => {
+    const cb = line.match(/^(\s*)\[([ xX])\]( ?)(.*)$/);
+    if (cb) {
+      const done = cb[2] !== " ";
+      return <div key={i}>{cb[1]}<span className={`nchk${done ? " done" : ""}`}>[{cb[2]}]</span>{cb[3]}<span className={done ? "ndone" : ""}>{cb[4] || "\u200B"}</span></div>;
+    }
+    const b = line.match(/^(\s*)([-\u2022\u2014*]|\d+[.)])( .*)$/);
+    if (b) return <div key={i}>{b[1]}<span className="nbul">{b[2]}</span>{b[3]}</div>;
+    return <div key={i}>{line || "\u200B"}</div>;
+  });
+}
+
+function NotesEditor({ value, onChange, taRef }) {
+  const mirrorRef = useRef(null);
+
+  const onKeyDown = (e) => {
+    const ta = e.target;
+    const { value: v, selectionStart: s, selectionEnd: en } = ta;
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const { start } = lineBounds(v, s);
+      if (!toggleCheckboxAt(ta, start, onChange)) {
+        const [, indent, bullet = ""] = v.slice(start).match(/^(\s*)([-•—*] |\d+[.)] )?/);
+        const from = start + indent.length;
+        ta.setSelectionRange(from, from + bullet.length);
+        insertText(ta, "[ ] ", onChange);
+        const caret = Math.max(from + 4, s + 4 - bullet.length);
+        ta.setSelectionRange(caret, caret);
+      }
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey && s === en) {
+      const { start, end } = lineBounds(v, s);
+      const m = v.slice(start, s).match(LIST_PREFIX_RE);
+      if (!m) return;
+      e.preventDefault();
+      if (v.slice(start, end).trim() === m[2].trim()) {
+        ta.setSelectionRange(start, end);
+        insertText(ta, "", onChange);
+        return;
+      }
+      const next = m[2].startsWith("[") ? "[ ] " : m[3] ? `${+m[3] + 1}${m[4]} ` : m[2];
+      insertText(ta, "\n" + m[1] + next, onChange);
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const blockStart = lineBounds(v, s).start;
+      const blockEnd = lineBounds(v, Math.max(s, en - (en > s && v[en - 1] === "\n" ? 1 : 0))).end;
+      const lines = v.slice(blockStart, blockEnd).split("\n");
+      const changed = lines.map(l => e.shiftKey ? l.replace(/^ {1,2}/, "") : "  " + l);
+      const firstDelta = changed[0].length - lines[0].length;
+      const totalDelta = changed.join("\n").length - (blockEnd - blockStart);
+      ta.setSelectionRange(blockStart, blockEnd);
+      insertText(ta, changed.join("\n"), onChange);
+      ta.setSelectionRange(Math.max(blockStart, s + firstDelta), en + totalDelta);
+    }
+  };
+
+  const onClick = (e) => {
+    const ta = e.target;
+    if (ta.selectionStart !== ta.selectionEnd) return;
+    const pos = ta.selectionStart;
+    const { start } = lineBounds(ta.value, pos);
+    const m = ta.value.slice(start).match(CHECKBOX_RE);
+    if (m && pos >= start + m[1].length && pos <= start + m[1].length + 3) toggleCheckboxAt(ta, start, onChange);
+  };
+
+  const shared = {
+    position: "absolute", inset: 0, margin: 0, border: "none", padding: "18px 22px 40px", boxSizing: "border-box",
+    fontFamily: font.body, fontSize: 14, lineHeight: 1.75, letterSpacing: "normal", tabSize: 2,
+    whiteSpace: "pre-wrap", overflowWrap: "break-word", wordBreak: "normal", overflowY: "scroll",
+  };
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} className="quick-note-modal" style={{ background: C.surface, borderRadius: 14, padding: 20, width: 400, maxWidth: "100%", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
-        <style>{`
-          @media (min-width: 768px) { .quick-note-modal { width: 540px !important; } }
-          .quick-note-area::-webkit-scrollbar { width: 4px; }
-          .quick-note-area::-webkit-scrollbar-track { background: transparent; }
-          .quick-note-area::-webkit-scrollbar-thumb { background: ${C.scroll}; border-radius: 2px; }
-          .quick-note-area::-webkit-scrollbar-thumb:hover { background: ${C.dim}; }
-          .quick-note-area { scrollbar-width: thin; scrollbar-color: ${C.scroll} transparent; }
-        `}</style>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Quick Notes</span>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>{"\u00D7"}</button>
+    <div style={{ position: "relative", flex: 1, minHeight: 0, background: C.surfaceAlt }}>
+      <style>{`
+        .notes-ta, .notes-mirror { scrollbar-width: thin; scrollbar-color: ${C.scroll} transparent; }
+        .notes-ta::selection { background: ${C.accentGlow}; color: transparent; }
+        .notes-mirror .nchk { position: relative; color: transparent; }
+        .notes-mirror .nchk::before { content: ""; position: absolute; left: 50%; top: 50%; width: 13px; height: 13px; transform: translate(-50%, -50%); border: 1.5px solid ${C.dim}; border-radius: 4px; box-sizing: border-box; background: ${C.surface}; }
+        .notes-mirror .nchk.done::before { background: ${C.accent}; border-color: ${C.accent}; }
+        .notes-mirror .nchk.done::after { content: ""; position: absolute; left: 50%; top: 45%; width: 3px; height: 7px; transform: translate(-50%, -50%) rotate(45deg); border: solid #fff; border-width: 0 2px 2px 0; }
+        .notes-mirror .ndone { color: ${C.dim}; text-decoration: line-through; }
+        .notes-mirror .nbul { color: ${C.accent}; }
+      `}</style>
+      <div ref={mirrorRef} className="notes-mirror" aria-hidden="true" style={{ ...shared, color: C.text, pointerEvents: "none" }}>
+        <NotesMirror text={value} />
+      </div>
+      <textarea ref={taRef} className="notes-ta" value={value} spellCheck
+        onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} onClick={onClick}
+        onScroll={e => { if (mirrorRef.current) mirrorRef.current.scrollTop = e.target.scrollTop; }}
+        placeholder={"Jot down anything...\n\n- Start a line with - or 1. for a list\n[ ] Start a line with [ ] for a checkbox"}
+        style={{ ...shared, width: "100%", height: "100%", resize: "none", outline: "none", background: "transparent", color: "transparent", caretColor: C.text }} />
+    </div>
+  );
+}
+
+// Turns the selected note lines (or the caret's line) into planner tasks.
+function SendToPlanner({ taRef, defaultDay, onSend }) {
+  const [open, setOpen] = useState(false);
+  const [lines, setLines] = useState([]);
+  const [target, setTarget] = useState({ type: "week", day: defaultDay, block: "Morning" });
+  const [flash, setFlash] = useState("");
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const openPicker = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: en, value: v } = ta;
+    const from = lineBounds(v, s).start;
+    const to = lineBounds(v, en > s && v[en - 1] === "\n" ? en - 1 : en).end;
+    setLines(v.slice(from, to).split("\n").map(l => l.replace(/^\s*(\[[ xX]\]\s*|[-\u2022\u2014*]\s+|\d+[.)]\s+)?/, "").trim()).filter(Boolean));
+    setTarget(t => ({ ...t, day: defaultDay }));
+    setOpen(true);
+  };
+
+  const send = () => {
+    onSend(lines, target);
+    const where = target.type === "week" ? `${target.day} \u00B7 ${target.block}` : target.list;
+    setFlash(`Added ${lines.length} to ${where}`);
+    setOpen(false);
+    setTimeout(() => setFlash(""), 2500);
+  };
+
+  const chip = (label, active, onClick) => (
+    <button key={label} onClick={onClick} style={{ padding: "4px 10px", borderRadius: 6, fontSize: 12, fontFamily: font.body, cursor: "pointer", border: `1px solid ${active ? C.accent : C.border}`, background: active ? C.accentDim : C.surfaceAlt, color: active ? C.accent : C.muted }}>{label}</button>
+  );
+  const label = (t) => <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.08em", margin: "10px 0 6px" }}>{t}</div>;
+
+  return (
+    <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
+      {flash && <span style={{ fontSize: 11, color: C.green }}>{"\u2713"} {flash}</span>}
+      <button onMouseDown={e => e.preventDefault()} onClick={() => open ? setOpen(false) : openPicker()} title="Highlight lines in your notes, then send them to the planner as tasks"
+        style={{ background: open ? C.accentDim : C.btn, border: `1px solid ${open ? C.accent : C.border}`, color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
+        {"\u2192"} Add to planner
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 340, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 300 }}>
+          {lines.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Click a line or highlight several lines in your notes first, then press Add to planner.</div>
+          ) : (
+            <>
+              <div style={{ fontSize: 12, color: C.text, maxHeight: 110, overflowY: "auto", lineHeight: 1.5 }}>
+                {lines.map((l, i) => <div key={i} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{"\u2022"} {l}</div>)}
+              </div>
+              {label("Day")}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {DAYS.map(d => chip(d === "Weekend" ? "Wknd" : d.slice(0, 3), target.type === "week" && target.day === d, () => setTarget(t => ({ type: "week", day: d, block: t.block || "Morning" }))))}
+              </div>
+              {target.type === "week" && <div style={{ display: "flex", gap: 4, marginTop: 6 }}>{BLOCKS.map(b => chip(b.label, target.block === b.key, () => setTarget(t => ({ ...t, block: b.key }))))}</div>}
+              {label("Or a list")}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {LISTS.map(li => chip(li.label, target.type === "list" && target.list === li.key, () => setTarget({ type: "list", list: li.key })))}
+              </div>
+              <button onClick={send} style={{ marginTop: 14, width: "100%", padding: "8px 0", borderRadius: 8, border: "none", background: C.accent, color: "#fff", fontFamily: font.body, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Add {lines.length} task{lines.length === 1 ? "" : "s"}
+              </button>
+            </>
+          )}
         </div>
-        <textarea className="quick-note-area" value={text} onChange={e => { setText(e.target.value); onSave(e.target.value); }} placeholder="Jot down anything..." rows={14}
-          style={{ width: "100%", border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px", fontFamily: font.body, fontSize: 13, color: C.text, resize: "vertical", outline: "none", background: C.surfaceAlt, boxSizing: "border-box", lineHeight: 1.6, maxHeight: "60vh", overflowY: "auto" }}
-          onFocus={e => e.target.style.borderColor = C.accent} onBlur={e => e.target.style.borderColor = C.border} />
-        <div style={{ fontSize: 11, color: C.dim, marginTop: 6 }}>Syncs across all your devices</div>
+      )}
+    </div>
+  );
+}
+
+function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked, width, onResize }) {
+  const taRef = useRef(null);
+  useEffect(() => { if (taRef.current && !docked) taRef.current.focus(); }, [docked]);
+
+  const startResize = (e) => {
+    e.preventDefault();
+    const move = (ev) => onResize(Math.min(75, Math.max(30, ((window.innerWidth - ev.clientX) / window.innerWidth) * 100)), false);
+    const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); document.body.style.userSelect = ""; onResize(null, true); };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
+
+  const body = (
+    <>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 10px 20px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
+        <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Notes</span>
+        <span style={{ fontSize: 11, color: C.dim, marginRight: "auto" }}>{saving ? "Saving\u2026" : "Synced"}</span>
+        <SendToPlanner taRef={taRef} defaultDay={defaultDay} onSend={onSend} />
+        <button onClick={onClose} title="Close notes" style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>{"\u00D7"}</button>
+      </div>
+      <NotesEditor value={note} onChange={onSave} taRef={taRef} />
+      <div style={{ padding: "6px 20px", fontSize: 11, color: C.dim, borderTop: `1px solid ${C.border}`, background: C.surface }}>
+        <b>-</b> or <b>1.</b> list {"\u00B7"} <b>[ ]</b> checkbox {"\u00B7"} {docked ? <><b>Tab</b> indent {"\u00B7"} <b>Ctrl+Enter</b> make/check a box</> : "tap a box to check it"}
+      </div>
+    </>
+  );
+
+  if (docked) {
+    return (
+      <div style={{ position: "fixed", top: "var(--header-h, 56px)", right: 0, bottom: 0, width: `${width}vw`, display: "flex", flexDirection: "column", background: C.surface, borderLeft: `1px solid ${C.border}`, boxShadow: "-8px 0 24px rgba(0,0,0,0.06)", zIndex: 90 }}>
+        <div onMouseDown={startResize} title="Drag to resize" style={{ position: "absolute", left: -4, top: 0, bottom: 0, width: 8, cursor: "col-resize", zIndex: 1 }} />
+        {body}
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 10 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
+        style={{ background: C.surface, borderRadius: 14, width: "100%", height: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
+        {body}
       </div>
     </div>
   );
+}
+
+function useIsDesktop() {
+  const query = "(min-width: 768px)";
+  const [match, setMatch] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatch(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return match;
 }
 
 function useSwipe(onSwipeLeft, onSwipeRight) {
@@ -498,7 +733,22 @@ export default function WeeklyPlanner() {
   const [showRollover, setShowRollover] = useState(false);
   const [showRollDay, setShowRollDay] = useState(false);
   const [showExport, setShowExport] = useState(false);
-  const [showQuickNote, setShowQuickNote] = useState(false);
+  const isDesktop = useIsDesktop();
+  const [showQuickNote, setShowQuickNote] = useState(() => { try { return window.matchMedia("(min-width: 768px)").matches && localStorage.getItem("planner-notes-open") === "1"; } catch { return false; } });
+  const [notesWidth, setNotesWidth] = useState(() => { try { return Number(localStorage.getItem("planner-notes-width")) || 60; } catch { return 60; } });
+  const notesDocked = showQuickNote && isDesktop;
+  const setNotesOpen = (open) => { setShowQuickNote(open); try { localStorage.setItem("planner-notes-open", open ? "1" : "0"); } catch {} };
+  const resizeNotes = (w, done) => {
+    if (w !== null) setNotesWidth(w);
+    if (done) setNotesWidth(cur => { try { localStorage.setItem("planner-notes-width", String(Math.round(cur))); } catch {} return cur; });
+  };
+  const headerRef = useRef(null);
+  useEffect(() => {
+    if (!headerRef.current) return;
+    const ro = new ResizeObserver(([entry]) => document.documentElement.style.setProperty("--header-h", `${entry.target.offsetHeight}px`));
+    ro.observe(headerRef.current);
+    return () => ro.disconnect();
+  }, [loading]);
   const [quickNote, setQuickNote] = useState("");
   const [collapsedLists, setCollapsedLists] = useState({});
   const [allCollapsed, setAllCollapsed] = useState(true);
@@ -598,6 +848,11 @@ export default function WeeklyPlanner() {
       sortWeek(next);
       debouncedSave(`planner-week:${currentWeek}`, next); return next;
     });
+  };
+  const sendNotesToPlanner = (lines, target) => {
+    const tasks = lines.map(text => ({ id: genId(), text, done: false }));
+    if (target.type === "week") updateWeek(w => { w.days[target.day][target.block].push(...tasks); return w; });
+    else updateLists(l => { (l[target.list] = l[target.list] || []).push(...tasks); return l; });
   };
   const updateLists = (updater) => {
     setRunningLists(prev => {
@@ -802,7 +1057,7 @@ export default function WeeklyPlanner() {
           @media (max-width: 767px) { .mobile-tabs { display: flex !important; } .lists-panel { width: 100% !important; min-width: 100% !important; border-right: none !important; position: static !important; height: auto !important; } .week-panel { width: 100% !important; } .header-actions { gap: 6px !important; } .header-actions button { padding: 6px 10px !important; font-size: 11px !important; } }
         `}</style>
 
-        <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 16px 0", position: "sticky", top: 0, zIndex: 100 }}>
+        <div ref={headerRef} style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 16px 0", position: "sticky", top: 0, zIndex: 100 }}>
           <div style={{ position: "absolute", top: 10, right: 16, zIndex: 101, display: "flex", gap: 6 }}>
             <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} style={{
               background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 9px", cursor: "pointer", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
@@ -836,7 +1091,7 @@ export default function WeeklyPlanner() {
             <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
               {saving && <span style={{ fontSize: 11, color: C.dim, display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, animation: "pulse 1s infinite" }} /> syncing</span>}
               {!isCurrentWeek && <button onClick={() => setCurrentWeek(getWeekKey(new Date()))} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Today</button>}
-              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : C.btn, border: `1px solid ${showQuickNote ? "rgba(79,70,229,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
+              <button onClick={() => setNotesOpen(!showQuickNote)} style={{ background: showQuickNote ? C.accentDim : C.btn, border: `1px solid ${showQuickNote ? "rgba(79,70,229,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
               <button onClick={toggleAllDays} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
                 {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
@@ -852,8 +1107,8 @@ export default function WeeklyPlanner() {
           </div>
         </div>
 
-        <div style={{ display: "flex", maxWidth: 1200, margin: "0 auto", minHeight: "calc(100vh - 110px)" }}>
-          <div className="lists-panel" style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", position: "sticky", top: 56, height: "calc(100vh - 56px)", display: mobileView === "lists" ? "block" : "none" }}>
+        <div style={{ display: "flex", maxWidth: 1200, minHeight: "calc(100vh - 110px)", marginLeft: notesDocked ? 0 : "auto", marginRight: notesDocked ? `${notesWidth}vw` : "auto" }}>
+          <div className="lists-panel" style={{ width: notesDocked ? 240 : 280, minWidth: notesDocked ? 240 : 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", position: "sticky", top: 56, height: "calc(100vh - 56px)", display: mobileView === "lists" ? "block" : "none" }}>
             {LISTS.map(li => {
               const isListExpanded = !collapsedLists[li.key];
               return (
@@ -956,7 +1211,11 @@ export default function WeeklyPlanner() {
         {showRollover && <RolloverModal items={getIncompleteItems()} onConfirm={handleRollover} onCancel={() => setShowRollover(false)} />}
         {showRollDay && <RollDayModal weekData={weekData} todayName={todayName} onConfirm={handleRollDay} onCancel={() => setShowRollDay(false)} />}
         {showExport && <ExportModal currentWeek={currentWeek} lists={runningLists} onClose={() => setShowExport(false)} />}
-        {showQuickNote && <QuickNoteModal note={quickNote} onSave={saveQuickNoteFn} onClose={() => setShowQuickNote(false)} />}
+        {showQuickNote && (
+          <NotesPanel note={quickNote} onSave={saveQuickNoteFn} onClose={() => setNotesOpen(false)} saving={saving}
+            defaultDay={isCurrentWeek && todayName ? todayName : "Monday"} onSend={sendNotesToPlanner}
+            docked={isDesktop} width={notesWidth} onResize={resizeNotes} />
+        )}
       </div>
     </>
   );
