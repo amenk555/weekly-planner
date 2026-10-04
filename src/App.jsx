@@ -436,13 +436,15 @@ function ExportModal({ currentWeek, lists, onClose }) {
   );
 }
 
-const LIST_PREFIX_RE = /^(\s*)(\[[ xX]\] |[-\u2022\u2014*] |(\d+)([.)]) )/;
+const LIST_PREFIX_RE = /^(\s*)(\[[ xX]\] |[-\u2022\u2014*][ \u00A0]|(\d+)([.)]) )/;
 const CHECKBOX_RE = /^(\s*)\[([ xX])\]/;
 
 // Inserts through execCommand so the browser's undo history keeps working.
 const insertText = (ta, text, onChange) => {
   ta.focus();
-  if (!document.execCommand("insertText", false, text)) {
+  // Chrome mishandles the caret for insertText with an empty string, so use delete for removals.
+  const ok = text === "" ? (ta.selectionStart === ta.selectionEnd || document.execCommand("delete")) : document.execCommand("insertText", false, text);
+  if (!ok) {
     ta.setRangeText(text, ta.selectionStart, ta.selectionEnd, "end");
     onChange(ta.value);
   }
@@ -473,14 +475,15 @@ function NotesMirror({ text }) {
       const done = cb[2] !== " ";
       return <div key={i}>{cb[1]}<span className={`nchk${done ? " done" : ""}`}>[{cb[2]}]</span>{cb[3]}<span className={done ? "ndone" : ""}>{cb[4] || "\u200B"}</span></div>;
     }
-    const b = line.match(/^(\s*)([-\u2022\u2014*]|\d+[.)])( .*)$/);
-    if (b) return <div key={i}>{b[1]}<span className="nbul">{b[2]}</span>{b[3]}</div>;
+    const b = line.match(/^(\s*)([-\u2022\u2014*]|\d+[.)])([ \u00A0].*)$/);
+    if (b) return <div key={i}>{b[1]}<span className={b[2] === "-" ? "nbul ndash" : "nbul"}>{b[2]}</span>{b[3]}</div>;
     return <div key={i}>{line || "\u200B"}</div>;
   });
 }
 
 function NotesEditor({ value, onChange, taRef }) {
   const mirrorRef = useRef(null);
+  const text = value.replace(/\r\n?/g, "\n");
 
   const onKeyDown = (e) => {
     const ta = e.target;
@@ -551,11 +554,13 @@ function NotesEditor({ value, onChange, taRef }) {
         .notes-mirror .nchk.done::after { content: ""; position: absolute; left: 50%; top: 45%; width: 3px; height: 7px; transform: translate(-50%, -50%) rotate(45deg); border: solid #fff; border-width: 0 2px 2px 0; }
         .notes-mirror .ndone { color: ${C.dim}; text-decoration: line-through; }
         .notes-mirror .nbul { color: ${C.accent}; }
+        .notes-mirror .ndash { position: relative; color: transparent; }
+        .notes-mirror .ndash::before { content: ""; position: absolute; left: -2.5px; width: 7px; top: 55%; height: 2px; border-radius: 1px; transform: translateY(-50%); background: ${C.text}; }
       `}</style>
       <div ref={mirrorRef} className="notes-mirror" aria-hidden="true" style={{ ...shared, color: C.text, pointerEvents: "none" }}>
-        <NotesMirror text={value} />
+        <NotesMirror text={text} />
       </div>
-      <textarea ref={taRef} className="notes-ta" value={value} spellCheck
+      <textarea ref={taRef} className="notes-ta" value={text} spellCheck
         onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown} onClick={onClick}
         onScroll={e => { if (mirrorRef.current) mirrorRef.current.scrollTop = e.target.scrollTop; }}
         placeholder={"Jot down anything...\n\n- Start a line with - or 1. for a list\n[ ] Start a line with [ ] for a checkbox"}
@@ -645,7 +650,7 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
 
   const startResize = (e) => {
     e.preventDefault();
-    const move = (ev) => onResize(Math.min(75, Math.max(30, ((window.innerWidth - ev.clientX) / window.innerWidth) * 100)), false);
+    const move = (ev) => onResize(Math.min(75, Math.max(30, (ev.clientX / window.innerWidth) * 100)), false);
     const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); document.body.style.userSelect = ""; onResize(null, true); };
     document.body.style.userSelect = "none";
     document.addEventListener("mousemove", move);
@@ -669,8 +674,8 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
 
   if (docked) {
     return (
-      <div style={{ position: "fixed", top: "var(--header-h, 56px)", right: 0, bottom: 0, width: `${width}vw`, display: "flex", flexDirection: "column", background: C.surface, borderLeft: `1px solid ${C.border}`, boxShadow: "-8px 0 24px rgba(0,0,0,0.06)", zIndex: 90 }}>
-        <div onMouseDown={startResize} title="Drag to resize" style={{ position: "absolute", left: -4, top: 0, bottom: 0, width: 8, cursor: "col-resize", zIndex: 1 }} />
+      <div style={{ position: "fixed", top: "var(--header-h, 56px)", left: 0, bottom: 0, width: `${width}vw`, display: "flex", flexDirection: "column", background: C.surface, borderRight: `1px solid ${C.border}`, boxShadow: "8px 0 24px rgba(0,0,0,0.06)", zIndex: 90 }}>
+        <div onMouseDown={startResize} title="Drag to resize" style={{ position: "absolute", right: -4, top: 0, bottom: 0, width: 8, cursor: "col-resize", zIndex: 1 }} />
         {body}
       </div>
     );
@@ -1053,7 +1058,7 @@ export default function WeeklyPlanner() {
           ::-webkit-scrollbar-thumb { background: ${C.scroll}; border-radius: 3px; }
           textarea::placeholder, input::placeholder { color: ${C.dim}; }
           @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-          @media (min-width: 768px) { .mobile-tabs { display: none !important; } .lists-panel { display: block !important; } .week-panel { display: block !important; } }
+          @media (min-width: 768px) { .mobile-tabs { display: none !important; } .lists-panel { display: block !important; } .week-panel { display: block !important; } .lists-panel.notes-hide { display: none !important; } }
           @media (max-width: 767px) { .mobile-tabs { display: flex !important; } .lists-panel { width: 100% !important; min-width: 100% !important; border-right: none !important; position: static !important; height: auto !important; } .week-panel { width: 100% !important; } .header-actions { gap: 6px !important; } .header-actions button { padding: 6px 10px !important; font-size: 11px !important; } }
         `}</style>
 
@@ -1107,8 +1112,8 @@ export default function WeeklyPlanner() {
           </div>
         </div>
 
-        <div style={{ display: "flex", maxWidth: 1200, minHeight: "calc(100vh - 110px)", marginLeft: notesDocked ? 0 : "auto", marginRight: notesDocked ? `${notesWidth}vw` : "auto" }}>
-          <div className="lists-panel" style={{ width: notesDocked ? 240 : 280, minWidth: notesDocked ? 240 : 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", position: "sticky", top: 56, height: "calc(100vh - 56px)", display: mobileView === "lists" ? "block" : "none" }}>
+        <div style={{ display: "flex", maxWidth: 1200, minHeight: "calc(100vh - 110px)", marginLeft: notesDocked ? `${notesWidth}vw` : "auto", marginRight: "auto" }}>
+          <div className={notesDocked ? "lists-panel notes-hide" : "lists-panel"} style={{ width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, background: C.surface, padding: 16, overflowY: "auto", position: "sticky", top: 56, height: "calc(100vh - 56px)", display: mobileView === "lists" ? "block" : "none" }}>
             {LISTS.map(li => {
               const isListExpanded = !collapsedLists[li.key];
               return (
