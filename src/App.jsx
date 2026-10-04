@@ -21,14 +21,36 @@ const loadStorage = async (k) => {
   try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch { return null; }
 };
 
-const C = {
-  bg: "#F7F8FA", surface: "#FFFFFF", surfaceAlt: "#F3F4F6",
-  text: "#111827", muted: "#6B7280", dim: "#9CA3AF", border: "rgba(17,24,39,0.08)",
-  accent: "#4F46E5", green: "#16A34A", amber: "#D97706", slate: "#64748B", danger: "#DC2626",
-  accentDim: "rgba(79,70,229,0.08)", accentGlow: "rgba(79,70,229,0.15)",
-  greenDim: "rgba(22,163,74,0.08)",
-  amberDim: "rgba(217,119,6,0.07)", slateDim: "rgba(100,116,139,0.06)",
+const THEMES = {
+  light: {
+    bg: "#F7F8FA", surface: "#FFFFFF", surfaceAlt: "#F3F4F6",
+    text: "#111827", muted: "#6B7280", dim: "#9CA3AF", border: "rgba(17,24,39,0.08)",
+    accent: "#4F46E5", green: "#16A34A", amber: "#D97706", slate: "#64748B", danger: "#DC2626",
+    accentDim: "rgba(79,70,229,0.08)", accentGlow: "rgba(79,70,229,0.15)",
+    greenDim: "rgba(22,163,74,0.08)",
+    amberDim: "rgba(217,119,6,0.07)", slateDim: "rgba(100,116,139,0.06)",
+    btn: "rgba(0,0,0,0.04)", track: "rgba(0,0,0,0.06)", weekendBg: "#EEF0F3", scroll: "#D1D5DB",
+  },
+  dark: {
+    bg: "#0F1115", surface: "#171A21", surfaceAlt: "#1D2129",
+    text: "#E5E7EB", muted: "#9CA3AF", dim: "#6B7280", border: "rgba(255,255,255,0.08)",
+    accent: "#6366F1", green: "#4ADE80", amber: "#FBBF24", slate: "#94A3B8", danger: "#F87171",
+    accentDim: "rgba(99,102,241,0.14)", accentGlow: "rgba(99,102,241,0.25)",
+    greenDim: "rgba(74,222,128,0.07)",
+    amberDim: "rgba(251,191,36,0.07)", slateDim: "rgba(148,163,184,0.07)",
+    btn: "rgba(255,255,255,0.06)", track: "rgba(255,255,255,0.1)", weekendBg: "#14171D", scroll: "#374151",
+  },
 };
+// Styles reference CSS variables so switching themes is just flipping data-theme on <html>.
+const C = Object.fromEntries(Object.keys(THEMES.light).map(k => [k, `var(--${k})`]));
+const themeVars = (t) => Object.entries(t).map(([k, v]) => `--${k}: ${v};`).join(" ");
+document.head.insertAdjacentHTML("beforeend", `<style>
+  :root { ${themeVars(THEMES.light)} }
+  [data-theme="dark"] { ${themeVars(THEMES.dark)} color-scheme: dark; }
+  body { background: var(--bg); }
+</style>`);
+const THEME_KEY = "planner-theme";
+try { document.documentElement.dataset.theme = localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light"; } catch { document.documentElement.dataset.theme = "light"; }
 const font = { heading: "Arial, Helvetica, sans-serif", body: "Arial, Helvetica, sans-serif" };
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Weekend"];
@@ -193,7 +215,7 @@ function HamburgerMenu({ onExport }) {
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
       <button onClick={() => setOpen(p => !p)} style={{
-        background: open ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${open ? "rgba(79,70,229,0.3)" : C.border}`,
+        background: open ? C.accentDim : C.btn, border: `1px solid ${open ? "rgba(79,70,229,0.3)" : C.border}`,
         color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 10px", cursor: "pointer", fontSize: 16, fontFamily: font.body, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
       }}>
         <svg width="16" height="14" viewBox="0 0 16 14" fill="none">
@@ -423,9 +445,9 @@ function QuickNoteModal({ note, onSave, onClose }) {
           @media (min-width: 768px) { .quick-note-modal { width: 540px !important; } }
           .quick-note-area::-webkit-scrollbar { width: 4px; }
           .quick-note-area::-webkit-scrollbar-track { background: transparent; }
-          .quick-note-area::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 2px; }
-          .quick-note-area::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
-          .quick-note-area { scrollbar-width: thin; scrollbar-color: #D1D5DB transparent; }
+          .quick-note-area::-webkit-scrollbar-thumb { background: ${C.scroll}; border-radius: 2px; }
+          .quick-note-area::-webkit-scrollbar-thumb:hover { background: ${C.dim}; }
+          .quick-note-area { scrollbar-width: thin; scrollbar-color: ${C.scroll} transparent; }
         `}</style>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Quick Notes</span>
@@ -480,6 +502,13 @@ export default function WeeklyPlanner() {
   const [quickNote, setQuickNote] = useState("");
   const [collapsedLists, setCollapsedLists] = useState({});
   const [allCollapsed, setAllCollapsed] = useState(true);
+  const [theme, setTheme] = useState(document.documentElement.dataset.theme);
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem(THEME_KEY, next); } catch {}
+    setTheme(next);
+  };
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(id); }, []);
   const saveTimeout = useRef(null);
@@ -766,7 +795,7 @@ export default function WeeklyPlanner() {
         <style>{`
           * { box-sizing: border-box; -webkit-text-size-adjust: 100%; }
           ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; }
-          ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 3px; }
+          ::-webkit-scrollbar-thumb { background: ${C.scroll}; border-radius: 3px; }
           textarea::placeholder, input::placeholder { color: ${C.dim}; }
           @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
           @media (min-width: 768px) { .mobile-tabs { display: none !important; } .lists-panel { display: block !important; } .week-panel { display: block !important; } }
@@ -774,22 +803,30 @@ export default function WeeklyPlanner() {
         `}</style>
 
         <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 16px 0", position: "sticky", top: 0, zIndex: 100 }}>
-          {/* Hamburger pinned top-right */}
-          <div style={{ position: "absolute", top: 10, right: 16, zIndex: 101 }}>
+          <div style={{ position: "absolute", top: 10, right: 16, zIndex: 101, display: "flex", gap: 6 }}>
+            <button onClick={toggleTheme} title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"} style={{
+              background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 9px", cursor: "pointer", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {theme === "dark" ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+              )}
+            </button>
             <HamburgerMenu onExport={() => setShowExport(true)} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingBottom: 10, paddingRight: 44, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, paddingBottom: 10, paddingRight: 86, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: "1 1 auto" }}>
               <div style={{ display: "flex", flexShrink: 0 }}>
-                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, -1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: "6px 0 0 6px", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u2039"}</button>
-                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, 1))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, borderLeft: "none", color: C.muted, borderRadius: "0 6px 6px 0", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u203A"}</button>
+                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, -1))} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: "6px 0 0 6px", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u2039"}</button>
+                <button onClick={() => setCurrentWeek(getAdjacentWeek(currentWeek, 1))} style={{ background: C.btn, border: `1px solid ${C.border}`, borderLeft: "none", color: C.muted, borderRadius: "0 6px 6px 0", padding: "5px 10px", cursor: "pointer", fontSize: 15 }}>{"\u203A"}</button>
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{getWeekLabel(currentWeek)}</div>
                 {stats.total > 0 && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                     <span style={{ fontSize: 11, color: C.muted }}>{stats.done}/{stats.total}</span>
-                    <div style={{ width: 60, height: 4, background: "rgba(0,0,0,0.06)", borderRadius: 2, overflow: "hidden" }}>
+                    <div style={{ width: 60, height: 4, background: C.track, borderRadius: 2, overflow: "hidden" }}>
                       <div style={{ height: "100%", width: pct + "%", background: `linear-gradient(90deg, ${C.accent}, ${C.green})`, borderRadius: 2, transition: "width 0.4s" }} />
                     </div>
                   </div>
@@ -798,12 +835,12 @@ export default function WeeklyPlanner() {
             </div>
             <div className="header-actions" style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0, flexWrap: "wrap" }}>
               {saving && <span style={{ fontSize: 11, color: C.dim, display: "flex", alignItems: "center", gap: 4 }}><div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, animation: "pulse 1s infinite" }} /> syncing</span>}
-              {!isCurrentWeek && <button onClick={() => setCurrentWeek(getWeekKey(new Date()))} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Today</button>}
-              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : "rgba(0,0,0,0.04)", border: `1px solid ${showQuickNote ? "rgba(79,70,229,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
-              <button onClick={toggleAllDays} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
+              {!isCurrentWeek && <button onClick={() => setCurrentWeek(getWeekKey(new Date()))} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Today</button>}
+              <button onClick={() => setShowQuickNote(true)} style={{ background: showQuickNote ? C.accentDim : C.btn, border: `1px solid ${showQuickNote ? "rgba(79,70,229,0.3)" : C.border}`, color: showQuickNote ? C.accent : C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>{"\u270E"} Notes</button>
+              <button onClick={toggleAllDays} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
                 {allCollapsed ? "\u25B8 Expand" : "\u25BE Collapse"}
               </button>
-              <button onClick={() => setShowRollDay(true)} style={{ background: "rgba(0,0,0,0.04)", border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Roll Day {"\u2192"}</button>
+              <button onClick={() => setShowRollDay(true)} style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>Roll Day {"\u2192"}</button>
               <button onClick={() => setShowRollover(true)} style={{ background: C.accent, border: "none", color: "#fff", borderRadius: 8, padding: "6px 16px", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font.body, boxShadow: `0 0 20px ${C.accentGlow}` }}>Roll Week {"\u2192"}</button>
             </div>
           </div>
@@ -874,7 +911,7 @@ export default function WeeklyPlanner() {
                 const dayDateStr = isWeekend
                   ? (() => { const mon = new Date(currentWeek + "T00:00:00"); const sat = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 5); const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6); return `${sat.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })} \u2013 ${sun.toLocaleDateString("en-US", { month: "numeric", day: "numeric" })}`; })()
                   : getDayDate(day).toLocaleDateString("en-US", { month: "numeric", day: "numeric" });
-                const bgColor = isToday ? "rgba(79,70,229,0.03)" : isWeekend ? "#EEF0F3" : C.surfaceAlt;
+                const bgColor = isToday ? "rgba(79,70,229,0.03)" : isWeekend ? C.weekendBg : C.surfaceAlt;
                 const borderColor = isToday ? "1px solid rgba(79,70,229,0.3)" : `1px solid ${C.border}`;
                 return (
                   <div key={day} style={{ borderRadius: 10, overflow: "hidden", border: borderColor, background: bgColor, boxShadow: isToday ? "0 0 30px rgba(79,70,229,0.06)" : "0 1px 3px rgba(0,0,0,0.03)" }}>
@@ -893,7 +930,7 @@ export default function WeeklyPlanner() {
                     {isExpanded && (
                       <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
                         {BLOCKS.map(block => (
-                          <DropZone key={block.key} onDrop={handleDropOnBlock(day, block.key)} style={{ background: block.dim, borderRadius: 8, padding: "8px 12px", border: "1px solid rgba(0,0,0,0.04)" }}>
+                          <DropZone key={block.key} onDrop={handleDropOnBlock(day, block.key)} style={{ background: block.dim, borderRadius: 8, padding: "8px 12px", border: `1px solid ${C.border}` }}>
                             <div style={{ fontSize: 10, fontWeight: 600, color: block.color, marginBottom: 5, display: "flex", alignItems: "center", gap: 5, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                               <span style={{ fontSize: 12 }}>{block.icon}</span> {block.label}
                             </div>
