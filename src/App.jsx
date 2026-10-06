@@ -136,7 +136,7 @@ function ReorderDropZone({ onDrop, children }) {
       onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setOver(true); }}
       onDragLeave={e => { e.stopPropagation(); setOver(false); }}
       onDrop={e => { e.preventDefault(); e.stopPropagation(); setOver(false); if (dragPayload) { onDrop(dragPayload); dragPayload = null; } }}
-      style={{ borderTop: over ? `2px solid ${C.accent}` : "2px solid transparent", transition: "border-color 0.1s", minHeight: 2 }}
+      style={{ boxShadow: over ? `inset 0 2px 0 ${C.accent}` : "none", minHeight: 2 }}
     >{children}</div>
   );
 }
@@ -152,8 +152,8 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
     <div draggable={!editing}
       onDragStart={e => { dragPayload = { task: { ...task }, type: dragType, zone: dragZone, index }; e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", task.id); e.currentTarget.style.opacity = "0.4"; }}
       onDragEnd={e => { e.currentTarget.style.opacity = "1"; }}
-      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "5px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
-      <button onClick={() => onToggle(task.id)} style={{ width: 16, height: 16, minWidth: 16, marginTop: 2, borderRadius: 4, padding: 0, border: task.done ? "none" : `1.5px solid ${C.dim}`, background: task.done ? C.accent : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      style={{ display: "flex", alignItems: "flex-start", gap: 7, padding: "3px 6px", borderRadius: 6, background: task.done ? C.surfaceAlt : "transparent", cursor: editing ? "text" : "grab", opacity: task.done ? 0.45 : 1, transition: "all 0.15s" }}>
+      <button onClick={() => onToggle(task.id)} style={{ width: 16, height: 16, minWidth: 16, marginTop: 1, borderRadius: 4, padding: 0, border: task.done ? "none" : `1.5px solid ${C.dim}`, background: task.done ? C.accent : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
         {task.done && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5L4.5 7.5L8 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
       </button>
       {editing ? (
@@ -168,7 +168,7 @@ function TaskItem({ task, onToggle, onUpdate, onDelete, dragType, dragZone, inde
             color: task.done ? C.dim : parsed.red ? C.danger : C.text,
             fontWeight: parsed.bold ? 700 : 400,
             fontStyle: parsed.admin ? "italic" : "normal",
-            lineHeight: 1.45, wordBreak: "break-word",
+            lineHeight: 1.35, wordBreak: "break-word",
           }}>{parsed.admin && <span style={{ fontStyle: "normal", fontWeight: 600, color: C.muted, marginRight: 4 }}>(A)</span>}{parsed.display}</span>
       )}
       <button onClick={() => onDelete(task.id)}
