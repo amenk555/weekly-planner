@@ -262,7 +262,7 @@ function HamburgerMenu({ onExport }) {
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
                 ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
-                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines"],
+                ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines. Highlight lines and press Group by name to pull every \"Name...\" line to the top in A\u2013Z order"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
               ].map(([title, desc], i) => (
@@ -621,7 +621,7 @@ function NotesEditor({ value, onChange, taRef }) {
 }
 
 // Turns the selected note lines (or the caret's line) into planner tasks.
-function SendToPlanner({ taRef, defaultDay, onSend }) {
+function SendToPlanner({ taRef, defaultDay, onSend, compact }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState([]);
   const [target, setTarget] = useState({ type: "week", day: defaultDay, block: "Morning" });
@@ -663,8 +663,8 @@ function SendToPlanner({ taRef, defaultDay, onSend }) {
     <div ref={ref} style={{ position: "relative", display: "flex", alignItems: "center", gap: 8 }}>
       {flash && <span style={{ fontSize: 11, color: C.green }}>{"\u2713"} {flash}</span>}
       <button onMouseDown={e => e.preventDefault()} onClick={() => open ? setOpen(false) : openPicker()} title="Highlight lines in your notes, then send them to the planner as tasks"
-        style={{ background: open ? C.accentDim : C.btn, border: `1px solid ${open ? C.accent : C.border}`, color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontFamily: font.body }}>
-        {"\u2192"} Add to planner
+        style={{ background: open ? C.accentDim : C.btn, border: `1px solid ${open ? C.accent : C.border}`, color: open ? C.accent : C.muted, borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontFamily: font.body, whiteSpace: "nowrap" }}>
+        {"\u2192"} {compact ? "Planner" : "Add to planner"}
       </button>
       {open && (
         <div style={{ position: "absolute", top: "calc(100% + 6px)", right: 0, width: 340, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10, boxShadow: "0 12px 32px rgba(0,0,0,0.18)", padding: 14, zIndex: 300 }}>
@@ -695,6 +695,60 @@ function SendToPlanner({ taRef, defaultDay, onSend }) {
   );
 }
 
+// "Name... text" lines (optionally bulleted), e.g. "- Sammi... churn tracking" or "Brian/Kristi... paperwork".
+const NAME_LINE_RE = /^[ \t]*(?:(?:[-•—*]|\d+[.)]|\[[ xX]\])[  ]+)?([A-Za-z][A-Za-z'’-]*(?:[ \t]*[/&][ \t]*[A-Za-z][A-Za-z'’-]*)*)[ \t]*(?:\.{2,}|…)/;
+
+// Named lines move to the top sorted by name (keeping their order within a name); everything else follows in its original order.
+// Header lines above the first item and blank lines at the end of the selection stay where they are.
+function groupLinesByName(lines) {
+  const isItem = (l) => LIST_PREFIX_RE.test(l) || NAME_LINE_RE.test(l);
+  let head = 0;
+  while (head < lines.length && !isItem(lines[head])) head++;
+  let tail = lines.length;
+  while (tail > head && !lines[tail - 1].trim()) tail--;
+  const body = lines.slice(head, tail);
+  const named = [], other = [];
+  body.forEach((l, i) => {
+    const m = l.match(NAME_LINE_RE);
+    if (m) named.push({ l, i, key: m[1].toLowerCase().replace(/\s+/g, "") });
+    else other.push(l);
+  });
+  named.sort((a, b) => a.key.localeCompare(b.key) || a.i - b.i);
+  return { lines: [...lines.slice(0, head), ...named.map(n => n.l), ...other, ...lines.slice(tail)], count: named.length };
+}
+
+function GroupByName({ taRef, onChange, compact }) {
+  const [flash, setFlash] = useState("");
+  const show = (msg) => { setFlash(msg); setTimeout(() => setFlash(""), 3000); };
+  const run = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const { selectionStart: s, selectionEnd: en, value: v } = ta;
+    if (s === en) { show("Highlight the lines to group first"); return; }
+    const from = lineBounds(v, s).start;
+    const to = lineBounds(v, en > s && v[en - 1] === "\n" ? en - 1 : en).end;
+    const original = v.slice(from, to);
+    const { lines, count } = groupLinesByName(original.split("\n"));
+    if (!count) { show("No “Name...” lines in the highlighted text"); return; }
+    const result = lines.join("\n");
+    if (result !== original) {
+      ta.setSelectionRange(from, to);
+      insertText(ta, result, onChange);
+    }
+    ta.setSelectionRange(from, from + result.length);
+    show(`Grouped ${count} line${count === 1 ? "" : "s"} by name`);
+  };
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {flash && <span style={{ fontSize: 11, color: flash.startsWith("Grouped") ? C.green : C.muted }}>{flash}</span>}
+      <button onMouseDown={e => e.preventDefault()} onClick={run} title="Highlight some lines, then click to pull every 'Name...' line to the top, sorted by name"
+        style={{ background: C.btn, border: `1px solid ${C.border}`, color: C.muted, borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontFamily: font.body, whiteSpace: "nowrap" }}>
+        A{"\u2192"}Z{compact ? "" : " Group by name"}
+      </button>
+    </div>
+  );
+}
+
 function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked, width, onResize }) {
   const taRef = useRef(null);
   useEffect(() => { if (taRef.current && !docked) taRef.current.focus(); }, [docked]);
@@ -713,7 +767,8 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px 10px 20px", borderBottom: `1px solid ${C.border}`, background: C.surface }}>
         <span style={{ fontFamily: font.heading, fontSize: 15, fontWeight: 700, color: C.text }}>{"\u270E"} Notes</span>
         <span style={{ fontSize: 11, color: C.dim, marginRight: "auto" }}>{saving ? "Saving\u2026" : "Synced"}</span>
-        <SendToPlanner taRef={taRef} defaultDay={defaultDay} onSend={onSend} />
+        <GroupByName taRef={taRef} onChange={onSave} compact={!docked} />
+        <SendToPlanner taRef={taRef} defaultDay={defaultDay} onSend={onSend} compact={!docked} />
         <button onClick={onClose} title="Close notes" style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 20, lineHeight: 1, padding: "0 4px" }}>{"\u00D7"}</button>
       </div>
       <NotesEditor value={note} onChange={onSave} taRef={taRef} />
