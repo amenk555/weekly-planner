@@ -261,7 +261,7 @@ function HamburgerMenu({ onExport }) {
                 ["4pm red alert", "Any red task still open for today after 4pm shows a banner at the top, and triggers an email and phone push"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
                 ["Roll Day", "Move today\u2019s incomplete tasks to tomorrow, keeping them in their same blocks (Mon\u2013Thu only)"],
-                ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday\u2019s Morning block"],
+                ["Roll Week", "At the end of the week, carry incomplete tasks forward to next Monday, keeping each one in its Morning, Afternoon or Admin block"],
                 ["Notes", "Tap \u270E Notes to open your notes beside the planner (drag its edge to resize). Start lines with - or 1. for lists, [] for checkboxes, and use Add to planner to turn highlighted lines into tasks. On a computer, Shift+Alt+Up/Down moves the current or highlighted lines. Highlight lines and press Group by name to pull every \"Name...\" line to the top in A\u2013Z order"],
                 ["Collapse / Expand", "Tap a day header to collapse that day, or use the Collapse button to toggle all days"],
                 ["Navigate weeks", "Use \u2039 \u203A arrows to move between weeks, or tap Today to jump back"],
@@ -286,7 +286,7 @@ function RolloverModal({ items, onConfirm, onCancel }) {
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.25)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onCancel}>
       <div onClick={e => e.stopPropagation()} style={{ background: C.surface, borderRadius: 14, padding: 24, maxWidth: 480, width: "100%", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 40px rgba(0,0,0,0.12)" }}>
         <h3 style={{ margin: "0 0 4px", fontFamily: font.heading, fontSize: 18, color: C.text }}>Roll Week {"\u2192"} Next Week</h3>
-        <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Incomplete tasks will be added to next Monday's Morning block. Uncheck any you want to leave behind.</p>
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted, fontFamily: font.body }}>Incomplete tasks will be added to next Monday, in the same Morning, Afternoon or Admin block they're in now. Uncheck any you want to leave behind.</p>
         <div style={{ flex: 1, overflowY: "auto", marginBottom: 16 }}>
           {items.length === 0 ? <p style={{ fontSize: 13, color: C.dim, textAlign: "center", padding: 20 }}>No incomplete tasks to roll over! {"\uD83C\uDF89"}</p>
           : items.map(item => (
@@ -1075,7 +1075,7 @@ export default function WeeklyPlanner() {
   const getIncompleteItems = () => {
     if (!weekData) return [];
     const items = [];
-    DAYS.forEach(day => BLOCKS.forEach(b => { (weekData.days[day]?.[b.key] || []).filter(t => !t.done).forEach(t => items.push({ ...t, day, block: b.label })); }));
+    DAYS.forEach(day => BLOCKS.forEach(b => { (weekData.days[day]?.[b.key] || []).filter(t => !t.done).forEach(t => items.push({ ...t, day, block: b.label, blockKey: b.key })); }));
     return items;
   };
 
@@ -1113,7 +1113,7 @@ export default function WeeklyPlanner() {
   const handleRollover = async (selectedIds) => {
     const nextWeek = getAdjacentWeek(currentWeek, 1);
     const existing = (await loadStorage(`planner-week:${nextWeek}`)) || emptyWeek();
-    getIncompleteItems().filter(i => selectedIds.includes(i.id)).forEach(item => { existing.days["Monday"]["Morning"].push({ id: genId(), text: item.text, done: false }); });
+    getIncompleteItems().filter(i => selectedIds.includes(i.id)).forEach(item => { existing.days["Monday"][item.blockKey].push({ id: genId(), text: item.text, done: false }); });
     await saveStorage(`planner-week:${nextWeek}`, existing);
     setShowRollover(false); setCurrentWeek(nextWeek);
   };
