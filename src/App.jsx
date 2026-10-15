@@ -99,8 +99,8 @@ const parseTaskText = (text) => {
   return { display: text, bold: false, red: false };
 };
 
-// List order: open tasks, then open ">>" admin tasks, then completed. Stable sort keeps manual order within each group.
-const taskRank = (t) => (t.done ? 2 : t.text.startsWith(">>") ? 1 : 0);
+// List order: open "**" red tasks, open tasks, open ">>" admin tasks, then completed. Stable sort keeps manual order within each group.
+const taskRank = (t) => (t.done ? 3 : t.text.startsWith("**") ? 0 : t.text.startsWith(">>") ? 2 : 1);
 const sortTasks = (arr) => arr.sort((a, b) => taskRank(a) - taskRank(b));
 const sortWeek = (wk) => { Object.values(wk?.days || {}).forEach(day => Object.values(day || {}).forEach(a => Array.isArray(a) && sortTasks(a))); return wk; };
 const sortLists = (l) => { Object.values(l || {}).forEach(a => Array.isArray(a) && sortTasks(a)); return l; };
@@ -256,7 +256,7 @@ function HamburgerMenu({ onExport }) {
                 ["Check off a task", "Tap the checkbox to mark it done (it'll dim and strikethrough)"],
                 ["Drag & drop", "Drag tasks between blocks, days, or sidebar lists. Drag within a list to reorder"],
                 ["Bold a task", "Type * before the text (e.g., *Important call) to make it bold"],
-                ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red"],
+                ["Bold + red", "Type ** before the text (e.g., **URGENT deadline) for bold red. Red tasks always sit at the top of their list"],
                 ["Admin task", "Type >> before the text (e.g., >>Expense report) for an italic task marked (A) that stays below your regular tasks"],
                 ["4pm red alert", "Any red task still open for today after 4pm shows a banner at the top, and triggers an email and phone push"],
                 ["Running Lists", "The left sidebar has persistent lists that carry across weeks: This Week, Next 30 Days, Radar, Think, and Other"],
