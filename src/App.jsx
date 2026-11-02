@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = "https://vsepkhuppboolbtbkszj.supabase.co";
@@ -796,6 +796,80 @@ function NotesPanel({ note, onSave, onClose, saving, defaultDay, onSend, docked,
   );
 }
 
+// Priorities are stored as one string, one priority per line; older entries may carry typed "1." numbering.
+const FIELD_SIZING = typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content");
+const parsePriorities = (v) => v.split("\n").map(l => l.replace(/^\s*\d+[.)]\s+/, "")).filter(l => l.trim());
+
+function PriorityPills({ value, onChange }) {
+  const [items, setItems] = useState(() => parsePriorities(value));
+  const [focusIdx, setFocusIdx] = useState(null);
+  const refs = useRef([]);
+  const joined = (arr) => arr.filter(l => l.trim()).join("\n");
+
+  // Pick up changes made on another device, but don't clobber a pill that's mid-edit.
+  useEffect(() => { if (joined(items) !== joined(value.split("\n"))) setItems(parsePriorities(value)); }, [value]);
+
+  useLayoutEffect(() => {
+    if (!FIELD_SIZING) refs.current.forEach(el => { if (el) { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; } });
+    if (focusIdx !== null && refs.current[focusIdx]) {
+      const el = refs.current[focusIdx];
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      setFocusIdx(null);
+    }
+  });
+
+  const commit = (next) => { setItems(next); onChange(joined(next)); };
+  const update = (i, text) => commit(items.map((t, j) => (j === i ? text.replace(/\n/g, " ") : t)));
+  const remove = (i, focusPrev) => { commit(items.filter((_, j) => j !== i)); if (focusPrev && i > 0) setFocusIdx(i - 1); };
+  const insertAt = (i) => { const next = [...items]; next.splice(i, 0, ""); setItems(next); setFocusIdx(i); };
+
+  const onKeyDown = (e, i) => {
+    if (e.key === "Enter") { e.preventDefault(); insertAt(i + 1); }
+    else if (e.key === "Backspace" && items[i] === "") { e.preventDefault(); remove(i, true); }
+  };
+  const onBlur = (i) => { if (!items[i]?.trim()) setItems(cur => cur.filter((t, j) => j !== i || t.trim())); };
+
+  return (
+    <div style={{ marginBottom: 14, padding: "10px 14px 12px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
+      <style>{`
+        .prio-grid { display: grid; gap: 8px; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+        @media (max-width: 767px) { .prio-grid { grid-template-columns: 1fr; } }
+        .prio-pill .prio-x { opacity: 0; transition: opacity 0.15s; }
+        .prio-pill:hover .prio-x, .prio-pill:focus-within .prio-x { opacity: 1; }
+        @media (hover: none) { .prio-pill .prio-x { opacity: 1; } }
+        .prio-pill textarea::placeholder { color: ${C.dim}; font-weight: 400; }
+      `}</style>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", fontFamily: font.heading }}>Weekly Priorities</div>
+        {items.length > 0 && (
+          <button onClick={() => insertAt(items.length)} title="Add a priority"
+            style={{ marginLeft: "auto", background: "none", border: "none", color: C.accent, cursor: "pointer", fontSize: 12, fontFamily: font.body, fontWeight: 600, padding: "0 2px" }}>+ Add</button>
+        )}
+      </div>
+      {items.length === 0 ? (
+        <button onClick={() => insertAt(0)}
+          style={{ width: "100%", padding: "12px", borderRadius: 8, border: `1.5px dashed ${C.border}`, background: "transparent", color: C.dim, fontSize: 13, fontFamily: font.body, cursor: "pointer", textAlign: "left" }}>
+          + What matters most this week? Add a priority
+        </button>
+      ) : (
+        <div className="prio-grid" style={{ "--cols": Math.min(items.length, 4) }}>
+          {items.map((text, i) => (
+            <div key={i} className="prio-pill" style={{ position: "relative", display: "flex", alignItems: "flex-start", gap: 8, padding: "9px 26px 9px 10px", borderRadius: 10, background: C.accentDim, border: "1px solid rgba(79,70,229,0.18)" }}>
+              <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: "50%", background: C.accent, color: "#fff", fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", marginTop: 1 }}>{i + 1}</span>
+              <textarea ref={el => (refs.current[i] = el)} value={text} rows={1} placeholder="New priority"
+                onChange={e => update(i, e.target.value)} onKeyDown={e => onKeyDown(e, i)} onBlur={() => onBlur(i)}
+                style={{ flex: 1, minWidth: 0, border: "none", outline: "none", background: "transparent", resize: "none", overflow: "hidden", fieldSizing: "content", padding: 0, fontSize: 13, fontWeight: 600, lineHeight: "20px", fontFamily: font.body, color: C.text }} />
+              <button className="prio-x" onMouseDown={e => e.preventDefault()} onClick={() => remove(i)} title="Remove priority"
+                style={{ position: "absolute", top: 6, right: 6, background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 2 }}>{"×"}</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function useIsDesktop() {
   const query = "(min-width: 768px)";
   const [match, setMatch] = useState(() => window.matchMedia(query).matches);
@@ -1261,11 +1335,7 @@ export default function WeeklyPlanner() {
                 ))}
               </div>
             )}
-            <div style={{ marginBottom: 14, padding: "12px 16px", borderRadius: 10, background: C.surface, border: `1px solid ${C.border}`, boxShadow: "0 1px 3px rgba(0,0,0,0.03)" }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6, fontFamily: font.heading }}>Weekly Priorities</div>
-              <textarea value={weekData?.priorities || ""} onChange={e => updateWeek(w => ({ ...w, priorities: e.target.value }))} placeholder="What matters most this week?" rows={2}
-                style={{ width: "100%", border: "none", outline: "none", background: "transparent", fontSize: 13, fontFamily: font.body, color: C.text, resize: "vertical", lineHeight: 1.6 }} />
-            </div>
+            <PriorityPills key={currentWeek} value={weekData?.priorities || ""} onChange={v => updateWeek(w => ({ ...w, priorities: v }))} />
 
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {DAYS.map(day => {
