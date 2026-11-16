@@ -10,6 +10,42 @@ const saveStorage = async (k, v) => {
   try { localStorage.setItem(k, JSON.stringify(v)); } catch {}
   try { await supabase.from("planner_data").upsert({ key: k, value: v }, { onConflict: "key" }); } catch (e) { console.error("Supabase save error:", e); }
 };
+// Server-only read; ok:false means the server couldn't be reached (so callers can tell "offline" from "no data").
+const fetchRemote = async (k) => {
+  try {
+    const { data, error } = await supabase.from("planner_data").select("value").eq("key", k).maybeSingle();
+    if (error) return { ok: false };
+    return { ok: true, value: data?.value ?? null };
+  } catch { return { ok: false }; }
+};
+
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// Three-way merge of a saved value: each priority line set, task block, list or note keeps the local
+// version only if it changed since `base`; otherwise the remote version wins. Lets two devices edit
+// different parts of the planner without one overwriting the other.
+const mergeStored = (key, base, local, remote) => {
+  if (base === undefined || remote == null) return local;
+  if (local == null) return remote;
+  const pick = (l, b, r) => (same(l, b) ? r : l);
+  if (key.startsWith("planner-week:")) {
+    const out = { ...remote, priorities: pick(local.priorities, base.priorities, remote.priorities), days: {} };
+    const days = new Set([...Object.keys(remote.days || {}), ...Object.keys(local.days || {})]);
+    days.forEach(d => {
+      out.days[d] = {};
+      const blocks = new Set([...Object.keys(remote.days?.[d] || {}), ...Object.keys(local.days?.[d] || {})]);
+      blocks.forEach(b => { out.days[d][b] = pick(local.days?.[d]?.[b], base.days?.[d]?.[b], remote.days?.[d]?.[b]) || []; });
+    });
+    return out;
+  }
+  if (key === "planner-running-lists") {
+    const out = {};
+    new Set([...Object.keys(remote), ...Object.keys(local)]).forEach(k => { out[k] = pick(local[k], base[k], remote[k]) || []; });
+    return out;
+  }
+  return pick(local, base, remote);
+};
+
 const loadStorage = async (k) => {
   try {
     const { data } = await supabase.from("planner_data").select("value").eq("key", k).single();
@@ -946,8 +982,13 @@ export default function WeeklyPlanner() {
   };
   const [now, setNow] = useState(() => new Date());
   useEffect(() => { const id = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(id); }, []);
-  const saveTimeout = useRef(null);
-  const noteTimeout = useRef(null);
+  // Sync bookkeeping per storage key: last value known to match the server, pending (unsaved) value, save timer, saves in flight.
+  const syncBase = useRef({});
+  const pendingSave = useRef({});
+  const saveTimers = useRef({});
+  const inFlight = useRef({});
+  const weekKeyRef = useRef(null);
+  weekKeyRef.current = `planner-week:${currentWeek}`;
   const isCurrentWeek = currentWeek === getWeekKey(new Date());
 
   const swipeHandlers = useSwipe(
@@ -999,6 +1040,9 @@ export default function WeeklyPlanner() {
             saveStorage(`planner-week:${currentWeek}`, wk);
           }
         }
+        syncBase.current[`planner-week:${currentWeek}`] = wk;
+        syncBase.current["planner-running-lists"] = lists || emptyLists();
+        syncBase.current["planner-quick-note"] = note || "";
         setWeekData(sortWeek(wk));
         setRunningLists(sortLists(lists || emptyLists()));
         if (note) setQuickNote(note);
@@ -1008,18 +1052,68 @@ export default function WeeklyPlanner() {
     return () => { cancelled = true; };
   }, [currentWeek, maybeAddPray]);
 
-  const debouncedSave = useCallback((key, data) => {
-    if (saveTimeout.current) clearTimeout(saveTimeout.current);
+  const isPending = (key) => Boolean(saveTimers.current[key] || inFlight.current[key]);
+  const refreshSaving = () => setSaving(Object.keys(saveTimers.current).length > 0 || Object.values(inFlight.current).some(Boolean));
+
+  // Fold a newer server value into what's on screen (and into any unsaved edit), keeping local changes made since `prevBase`.
+  const absorb = (key, serverValue, prevBase) => {
+    syncBase.current[key] = serverValue;
+    if (key in pendingSave.current) pendingSave.current[key] = mergeStored(key, prevBase, pendingSave.current[key], serverValue);
+    const fold = (prev) => { const merged = mergeStored(key, prevBase, prev, serverValue); return same(merged, prev) ? prev : merged; };
+    if (key === weekKeyRef.current) setWeekData(prev => { const m = fold(prev); return m === prev ? prev : sortWeek(m); });
+    else if (key === "planner-running-lists") setRunningLists(prev => { const m = fold(prev); return m === prev ? prev : sortLists(m); });
+    else if (key === "planner-quick-note") setQuickNote(prev => fold(prev));
+  };
+
+  const flushSave = async (key) => {
+    delete saveTimers.current[key];
+    if (!(key in pendingSave.current)) return refreshSaving();
+    const local = pendingSave.current[key];
+    delete pendingSave.current[key];
+    inFlight.current[key] = (inFlight.current[key] || 0) + 1;
+    const remote = await fetchRemote(key);
+    const toSave = remote.ok ? mergeStored(key, syncBase.current[key], local, remote.value) : local;
+    await saveStorage(key, toSave);
+    inFlight.current[key] -= 1;
+    absorb(key, toSave, local);
+    refreshSaving();
+  };
+
+  const debouncedSave = (key, data) => {
+    pendingSave.current[key] = data;
+    clearTimeout(saveTimers.current[key]);
+    saveTimers.current[key] = setTimeout(() => flushSave(key), 800);
     setSaving(true);
-    saveTimeout.current = setTimeout(async () => { await saveStorage(key, data); setSaving(false); }, 800);
-  }, []);
+  };
 
   const saveQuickNoteFn = (val) => {
     setQuickNote(val);
-    if (noteTimeout.current) clearTimeout(noteTimeout.current);
-    setSaving(true);
-    noteTimeout.current = setTimeout(async () => { await saveStorage("planner-quick-note", val); setSaving(false); }, 800);
+    debouncedSave("planner-quick-note", val);
   };
+
+  // Pick up edits made on other devices: on returning to the app and every 30s while it's visible.
+  const lastPull = useRef(0);
+  const pullLatest = async () => {
+    if (Date.now() - lastPull.current < 3000) return;
+    lastPull.current = Date.now();
+    const keys = [weekKeyRef.current, "planner-running-lists", "planner-quick-note"];
+    await Promise.all(keys.map(async (key) => {
+      if (isPending(key) || !(key in syncBase.current)) return;
+      const remote = await fetchRemote(key);
+      if (!remote.ok || remote.value == null || isPending(key) || same(remote.value, syncBase.current[key])) return;
+      try { localStorage.setItem(key, JSON.stringify(remote.value)); } catch {}
+      absorb(key, remote.value, syncBase.current[key]);
+    }));
+  };
+  const pullRef = useRef(pullLatest);
+  pullRef.current = pullLatest;
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") pullRef.current(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    const id = setInterval(onVisible, 30000);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("focus", onVisible); clearInterval(id); };
+  }, []);
 
   const getDayDate = (dayName) => {
     const mon = new Date(currentWeek + "T00:00:00");
